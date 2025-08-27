@@ -1,532 +1,229 @@
--- Art Agent Process for individual artwork management
--- This agent is spawned for each piece of artwork and operates autonomously
+-- art_agent.lua
+-- Per-artwork agent. Owns all compute & peer comms. Coordinator only gets map updates.
 
-json = require("json")
-crypto = require("crypto")
+local json = require('json')
 
--- Initialize persistent storage (capitalized variables are auto-persisted in AO)
-ArtworkData = ArtworkData or {}
-PeerAgents = PeerAgents or {}
-ContentHash = ContentHash or nil
-SimilarityThreshold = SimilarityThreshold or 10
-LastHeartbeat = LastHeartbeat or os.time()
-NetworkView = NetworkView or {}
-GossipRounds = GossipRounds or 0
+-- Filled at runtime via Action=Config from your console/script
+COORDINATOR_PID = COORDINATOR_PID or nil
+DISCOVERY_PID   = DISCOVERY_PID or nil
+LLM_WORKER_PID  = LLM_WORKER_PID or nil
 
--- Agent metadata
-AgentId = AgentId or ao.id
-Owner = Owner or ao.env.Process.Owner
-AgentType = "ArtAgent"
-Version = "1.0.0"
+-- Local thresholds (tune later)
+DUP_HAMMING = 3            -- SimHash (32-bit) Hamming <= 3 => near-dup
+T_DUP = 0.95               -- LLM gate for duplicates (semantic & style high)
+T_COUSIN = 0.85
+T_INFL  = 0.70
 
--- Initialize agent state
-function initializeAgent(artworkData)
-    ArtworkData = artworkData
-    ContentHash = calculateContentHash(ArtworkData.content)
-    
-    -- Register with network
-    announcePresence()
-    
-    -- Start gossip protocol
-    startGossipProtocol()
-    
-    -- Begin duplicate detection
-    initiateDuplicateSearch()
+Artwork = Artwork or {
+  id = nil,
+  text = nil,
+  canonical = nil,  -- FNV1a-32 string hash of canonical text
+  simhash = nil,    -- 32-bit int
+  prefix  = nil,    -- top N bits as hex string prefix
+  peers = {},       -- known peer PIDs
+  edges = {}        -- peerPID -> edge {type, weight, scores, simham}
+}
+
+-- ====== Utility: canonicalize, FNV1a32, SimHash32, Hamming ======
+local bit = bit32
+
+local function canonicalize(s)
+  s = s or ''
+  s = s:gsub("\r", "\n"):gsub("\t", " ")
+  s = s:lower():gsub("[^%w%s]", " ")
+  s = s:gsub("%s+", " ")
+  s = s:match("^%s*(.-)%s*$") or s
+  return s
 end
 
--- Content-based hashing using dHash algorithm (optimized for Lua)
-function calculateContentHash(content)
-    if ArtworkData.type == "image" then
-        return calculateImageHash(content)
-    elseif ArtworkData.type == "text" then
-        return calculateTextHash(content)
-    end
-    return calculateGenericHash(content)
+local function fnv1a32(s)
+  local hash = 2166136261
+  for i = 1, #s do
+    hash = bit.bxor(hash, s:byte(i))
+    hash = (hash * 16777619) % 2^32
+  end
+  return hash
 end
 
--- dHash implementation for images
-function calculateImageHash(imageData)
-    -- Simplified dHash - converts to 9x9 grayscale then calculates gradients
-    local pixels = convertToGrayscale(imageData, 9, 9)
-    local hash = 0
-    
-    -- Calculate horizontal gradients
-    for y = 1, 9 do
-        for x = 1, 8 do
-            local offset = (y-1) * 9 + x
-            if pixels[offset] < pixels[offset + 1] then
-                hash = hash | (1 << ((y-1)*8 + (x-1)))
-            end
-        end
-    end
-    
-    return tostring(hash)
+local function shingles(words, k)
+  local out = {}
+  for i=1, (#words - k + 1) do
+    local g = table.concat(words, ' ', i, i+k-1)
+    table.insert(out, g)
+  end
+  if #out == 0 and #words > 0 then out = { table.concat(words, ' ') } end
+  return out
 end
 
--- SimHash implementation for text content
-function calculateTextHash(textContent)
-    local features = extractFeatures(textContent)
-    local hashBits = {}
-    
-    -- Initialize hash bits
-    for i = 1, 64 do
-        hashBits[i] = 0
-    end
-    
-    -- Process each feature
-    for _, feature in pairs(features) do
-        local featureHash = simpleHash(feature)
-        for i = 1, 64 do
-            local bit = (featureHash >> (i-1)) & 1
-            if bit == 1 then
-                hashBits[i] = hashBits[i] + 1
-            else
-                hashBits[i] = hashBits[i] - 1
-            end
-        end
-    end
-    
-    -- Convert to final hash
-    local finalHash = 0
-    for i = 1, 64 do
-        if hashBits[i] > 0 then
-            finalHash = finalHash | (1 << (i-1))
-        end
-    end
-    
-    return tostring(finalHash)
+local function split_words(s)
+  local words = {}
+  for w in s:gmatch('%S+') do table.insert(words, w) end
+  return words
 end
 
-function extractFeatures(text)
-    -- Extract 3-grams as features
-    local features = {}
-    local words = splitWords(text)
-    
-    for i = 1, #words - 2 do
-        local trigram = words[i] .. " " .. words[i+1] .. " " .. words[i+2]
-        features[trigram] = (features[trigram] or 0) + 1
+local function simhash32_from_text(s)
+  local words = split_words(s)
+  local grams = shingles(words, 3)
+  local v = {}
+  for i=0,31 do v[i]=0 end
+  for _, g in ipairs(grams) do
+    local h = fnv1a32(g)
+    for i=0,31 do
+      local bit_i = bit.band(bit.rshift(h, i), 1)
+      if bit_i == 1 then v[i] = v[i] + 1 else v[i] = v[i] - 1 end
     end
-    
-    return features
+  end
+  local h = 0
+  for i=0,31 do
+    if v[i] >= 0 then h = bit.bor(h, bit.lshift(1, i)) end
+  end
+  return h
 end
 
--- Hamming distance calculation for similarity detection
-function hammingDistance(hash1, hash2)
-    local num1 = tonumber(hash1)
-    local num2 = tonumber(hash2)
-    local xor = num1 ~ num2  -- XOR operation
-    
-    -- Count set bits
-    local count = 0
-    while xor > 0 do
-        count = count + (xor & 1)
-        xor = xor >> 1
-    end
-    
-    return count
+local function hamming32(a,b)
+  local x = bit.bxor(a,b)
+  local c = 0
+  for _=0,31 do
+    if bit.band(x,1)==1 then c=c+1 end
+    x = bit.rshift(x,1)
+  end
+  return c
 end
 
--- Check if two content hashes are similar
-function areSimilar(hash1, hash2, threshold)
-    threshold = threshold or SimilarityThreshold
-    return hammingDistance(hash1, hash2) <= threshold
+local function prefix_hex(simhash, bits)
+  bits = bits or 12
+  local mask = bit.lshift(1, bits) - 1
+  local p = bit.band(simhash, mask)
+  return string.format('%03x', p)  -- 12 bits => 3 hex chars
 end
 
--- Announce presence to network using Arweave tags
-function announcePresence()
-    ao.send({
-        Target = ao.id, -- Self-message to create discoverable transaction
-        Action = "Agent-Announcement",
-        Tags = {
-            ["App-Name"] = "ArtworkAgentNetwork",
-            ["Agent-Type"] = "ArtAgent", 
-            ["Content-Hash"] = ContentHash,
-            ["Artwork-Type"] = ArtworkData.type,
-            ["Agent-Version"] = Version,
-            ["Last-Active"] = tostring(os.time())
-        },
-        Data = json.encode({
-            agentId = AgentId,
-            contentHash = ContentHash,
-            artworkMetadata = ArtworkData.metadata,
-            capabilities = {"duplicate-detection", "peer-communication", "content-analysis"}
-        })
-    })
+-- ====== Core actions ======
+local function announce_and_discover()
+  if not DISCOVERY_PID then return end
+  ao.send({ Target = DISCOVERY_PID, Action = 'RegisterPrefix', Prefix = Artwork.prefix })
+  ao.send({ Target = DISCOVERY_PID, Action = 'QueryPrefix',  Prefix = Artwork.prefix })
 end
 
--- Gossip protocol implementation for peer discovery
-function startGossipProtocol()
-    -- Schedule periodic gossip rounds
-    scheduleGossipRound()
+local function edge_type_from(scores, simham)
+  local s = scores.semantic or 0
+  local st= scores.style or 0
+  local e = scores.emotion or 0
+  local avg = (s + st + e) / 3
+  if simham and simham <= DUP_HAMMING and s > 0.9 and st > 0.9 then
+    return 'duplicate', math.max(s, st)
+  elseif s >= T_COUSIN and st >= T_INFL then
+    return 'cousin', avg
+  elseif st >= T_INFL then
+    return 'influence', st
+  elseif e >= T_INFL then
+    return 'mood-sibling', e
+  else
+    return 'related', avg
+  end
 end
 
-function scheduleGossipRound()
-    -- In a real implementation, this would use a timer
-    -- For AO, we'll handle this through periodic message triggers
-    GossipRounds = GossipRounds + 1
-    performGossipRound()
+local function send_relationship_update(peerPID, scores, simham)
+  local etype, weight = edge_type_from(scores, simham)
+  Artwork.edges[peerPID] = { type = etype, weight = weight, scores = scores, simham = simham }
+  if COORDINATOR_PID then
+    ao.send({ Target = COORDINATOR_PID, Action = 'Relationship-Update', Peer = peerPID, Type = etype, Weight = tostring(weight), SimHam = tostring(simham or 0), Data = json.encode(scores) })
+  end
+  -- Wake peer so it can mirror
+  ao.send({ Target = peerPID, Action = 'Relation-Notify', From = ao.id, Type = etype, Weight = tostring(weight), SimHam = tostring(simham or 0), Data = json.encode(scores) })
 end
 
-function performGossipRound()
-    -- Select random peers for gossip exchange
-    local selectedPeers = selectRandomPeers(3)
-    
-    for _, peer in ipairs(selectedPeers) do
-        ao.send({
-            Target = peer.agentId,
-            Action = "Gossip-Exchange",
-            Data = json.encode({
-                sender = AgentId,
-                networkView = getNetworkViewSample(5),
-                contentHash = ContentHash,
-                timestamp = os.time()
-            })
-        })
+-- ====== Handlers ======
+Handlers.add('Config', { Action = 'Config' }, function(msg)
+  if msg.Tags.Coordinator then COORDINATOR_PID = msg.Tags.Coordinator end
+  if msg.Tags.Discovery  then DISCOVERY_PID   = msg.Tags.Discovery  end
+  if msg.Tags.LLMWorker  then LLM_WORKER_PID  = msg.Tags.LLMWorker  end
+  msg.reply({ Action = 'OK' })
+end)
+
+Handlers.add('InitArtwork', { Action = 'InitArtwork' }, function(msg)
+  local body = msg.Data or ''
+  Artwork.text = body
+  Artwork.id = Artwork.id or (msg.Tags.ArtworkId or tostring(os.time()))
+  local canon = canonicalize(body)
+  Artwork.canonical = fnv1a32(canon)
+  Artwork.simhash = simhash32_from_text(canon)
+  Artwork.prefix  = prefix_hex(Artwork.simhash, 12)
+  -- Register with coordinator
+  if COORDINATOR_PID then
+    ao.send({ Target = COORDINATOR_PID, Action = 'Register-Agent', ArtworkId = Artwork.id })
+  end
+  -- Announce + discover peers
+  announce_and_discover()
+  msg.reply({ Action = 'Initialized', Data = json.encode({ prefix = Artwork.prefix, simhash = Artwork.simhash, canonical = Artwork.canonical }) })
+end)
+
+Handlers.add('QueryResult', { Action = 'QueryResult' }, function(msg)
+  local ok, obj = pcall(json.decode, msg.Data or '{}')
+  if not ok or not obj.peers then return end
+  for _, pid in ipairs(obj.peers) do
+    if not Artwork.peers[pid] then
+      Artwork.peers[pid] = true
+      -- Say hello with hashes so peer can compare
+      ao.send({ Target = pid, Action = 'Hello', Canonical = tostring(Artwork.canonical), SimHash = tostring(Artwork.simhash), Prefix = Artwork.prefix, ArtworkId = Artwork.id })
     end
-end
+  end
+end)
 
-function selectRandomPeers(count)
-    local peers = {}
-    local peerList = {}
-    
-    -- Convert peer table to list
-    for agentId, peerInfo in pairs(PeerAgents) do
-        if agentId ~= AgentId then -- Don't select self
-            table.insert(peerList, peerInfo)
-        end
-    end
-    
-    -- Randomly select peers
-    for i = 1, math.min(count, #peerList) do
-        local index = math.random(#peerList)
-        table.insert(peers, peerList[index])
-        table.remove(peerList, index)
-    end
-    
-    return peers
-end
+Handlers.add('Hello', { Action = 'Hello' }, function(msg)
+  -- Respond with our info + our text excerpt so peer can score locally
+  local payload = { text = Artwork.text }
+  ao.send({ Target = msg.From, Action = 'Hello-Reply', Canonical = tostring(Artwork.canonical), SimHash = tostring(Artwork.simhash), Prefix = Artwork.prefix, ArtworkId = Artwork.id, Data = json.encode(payload) })
+  -- Also evaluate the incoming peer
+  local their_canon = tonumber(msg.Tags.Canonical or msg.Canonical or '0')
+  local their_hash  = tonumber(msg.Tags.SimHash or msg.SimHash or '0')
+  local their_payload = {}
+  pcall(function() their_payload = json.decode(msg.Data or '{}') end)
+  local their_text = their_payload.text or ''
+  local simham = hamming32(Artwork.simhash, their_hash)
+  if their_canon == Artwork.canonical then
+    send_relationship_update(msg.From, { semantic = 1, style = 1, emotion = 1 }, 0)
+    return
+  end
+  if simham <= DUP_HAMMING then
+    send_relationship_update(msg.From, { semantic = 0.98, style = 0.96, emotion = 0.9 }, simham)
+    return
+  end
+  -- Otherwise, ask the LLM worker for tri-head scores using both texts
+  if LLM_WORKER_PID and #their_text > 0 then
+    ao.send({ Target = LLM_WORKER_PID, Action = 'ScorePair', Data = json.encode({ src = ao.id, dst = msg.From, textA = Artwork.text, textB = their_text }) })
+  end
+end)
 
-function getNetworkViewSample(count)
-    local sample = {}
-    local peerList = {}
-    
-    for agentId, peerInfo in pairs(PeerAgents) do
-        table.insert(peerList, {agentId = agentId, info = peerInfo})
-    end
-    
-    for i = 1, math.min(count, #peerList) do
-        local index = math.random(#peerList)
-        table.insert(sample, peerList[index])
-        table.remove(peerList, index)
-    end
-    
-    return sample
-end
+Handlers.add('Hello-Reply', { Action = 'Hello-Reply' }, function(msg)
+  local their_canon = tonumber(msg.Tags.Canonical or msg.Canonical or '0')
+  local their_hash  = tonumber(msg.Tags.SimHash or msg.SimHash or '0')
+  local their_payload = {}
+  pcall(function() their_payload = json.decode(msg.Data or '{}') end)
+  local their_text = their_payload.text or ''
+  local simham = hamming32(Artwork.simhash, their_hash)
+  if their_canon == Artwork.canonical then
+    send_relationship_update(msg.From, { semantic = 1, style = 1, emotion = 1 }, 0)
+    return
+  end
+  if simham <= DUP_HAMMING then
+    send_relationship_update(msg.From, { semantic = 0.98, style = 0.96, emotion = 0.9 }, simham)
+    return
+  end
+  if LLM_WORKER_PID and #their_text > 0 then
+    ao.send({ Target = LLM_WORKER_PID, Action = 'ScorePair', Data = json.encode({ src = ao.id, dst = msg.From, textA = Artwork.text, textB = their_text }) })
+  end
+end)
 
--- Initiate duplicate detection across the network
-function initiateDuplicateSearch()
-    -- Broadcast duplicate detection request
-    for agentId, peer in pairs(PeerAgents) do
-        ao.send({
-            Target = agentId,
-            Action = "Duplicate-Check",
-            Data = json.encode({
-                requestingAgent = AgentId,
-                contentHash = ContentHash,
-                artworkType = ArtworkData.type,
-                timestamp = os.time()
-            })
-        })
-    end
-end
+Handlers.add('Score-Result', { Action = 'Score-Result' }, function(msg)
+  local ok, obj = pcall(json.decode, msg.Data or '{}')
+  if not ok or not obj.scores or not obj.dst then return end
+  local peer = obj.dst
+  -- Without peer text, this is a half-estimate; still good for demo. (Day 3: exchange snippets for higher fidelity.)
+  send_relationship_update(peer, obj.scores, Artwork.simhash and 999 or nil)
+end)
 
--- Message Handlers
-
--- Handle gossip exchange messages
-Handlers.add(
-    "GossipExchange",
-    Handlers.utils.hasMatchingTag("Action", "Gossip-Exchange"),
-    function(msg)
-        local gossipData = json.decode(msg.Data)
-        
-        -- Update peer information
-        PeerAgents[gossipData.sender] = {
-            agentId = gossipData.sender,
-            lastSeen = os.time(),
-            contentHash = gossipData.contentHash
-        }
-        
-        -- Merge network view
-        for _, peerInfo in ipairs(gossipData.networkView) do
-            if not PeerAgents[peerInfo.agentId] then
-                PeerAgents[peerInfo.agentId] = peerInfo.info
-            end
-        end
-        
-        -- Respond with our network view
-        ao.send({
-            Target = msg.From,
-            Action = "Gossip-Response", 
-            Data = json.encode({
-                sender = AgentId,
-                networkView = getNetworkViewSample(5),
-                contentHash = ContentHash,
-                timestamp = os.time()
-            })
-        })
-    end
-)
-
--- Handle gossip response messages
-Handlers.add(
-    "GossipResponse",
-    Handlers.utils.hasMatchingTag("Action", "Gossip-Response"),
-    function(msg)
-        local responseData = json.decode(msg.Data)
-        
-        -- Update peer information
-        PeerAgents[responseData.sender] = {
-            agentId = responseData.sender,
-            lastSeen = os.time(),
-            contentHash = responseData.contentHash
-        }
-        
-        -- Merge network view
-        for _, peerInfo in ipairs(responseData.networkView) do
-            if not PeerAgents[peerInfo.agentId] then
-                PeerAgents[peerInfo.agentId] = peerInfo.info
-            end
-        end
-    end
-)
-
--- Handle duplicate detection requests
-Handlers.add(
-    "DuplicateCheck",
-    Handlers.utils.hasMatchingTag("Action", "Duplicate-Check"),
-    function(msg)
-        local checkData = json.decode(msg.Data)
-        
-        -- Compare content hashes
-        local similarity = hammingDistance(ContentHash, checkData.contentHash)
-        local isDuplicate = similarity <= SimilarityThreshold
-        
-        -- Send response
-        ao.send({
-            Target = msg.From,
-            Action = "Duplicate-Response",
-            Data = json.encode({
-                respondingAgent = AgentId,
-                requestingAgent = checkData.requestingAgent,
-                isDuplicate = isDuplicate,
-                similarityScore = similarity,
-                artworkId = ArtworkData.id,
-                contentHash = ContentHash,
-                timestamp = os.time()
-            })
-        })
-        
-        -- If duplicate found, wake up both agents
-        if isDuplicate then
-            wakeUpForDuplicate(msg.From, similarity)
-        end
-    end
-)
-
--- Handle duplicate detection responses
-Handlers.add(
-    "DuplicateResponse", 
-    Handlers.utils.hasMatchingTag("Action", "Duplicate-Response"),
-    function(msg)
-        local responseData = json.decode(msg.Data)
-        
-        if responseData.isDuplicate then
-            -- Found a duplicate!
-            handleDuplicateFound(responseData)
-        end
-        
-        -- Update peer information
-        PeerAgents[responseData.respondingAgent] = {
-            agentId = responseData.respondingAgent,
-            lastSeen = os.time(),
-            contentHash = responseData.contentHash
-        }
-    end
-)
-
--- Handle new peer announcements
-Handlers.add(
-    "PeerAnnouncement",
-    Handlers.utils.hasMatchingTag("Action", "Agent-Announcement"),
-    function(msg)
-        local announcementData = json.decode(msg.Data)
-        
-        -- Add new peer to network
-        PeerAgents[announcementData.agentId] = {
-            agentId = announcementData.agentId,
-            contentHash = announcementData.contentHash,
-            lastSeen = os.time(),
-            metadata = announcementData.artworkMetadata
-        }
-        
-        -- Automatically check for duplicates with new peer
-        local similarity = hammingDistance(ContentHash, announcementData.contentHash)
-        if similarity <= SimilarityThreshold then
-            wakeUpForDuplicate(announcementData.agentId, similarity)
-        end
-    end
-)
-
--- Handle wake-up calls for duplicate detection
-Handlers.add(
-    "WakeUpDuplicate",
-    Handlers.utils.hasMatchingTag("Action", "Wake-Up-Duplicate"),
-    function(msg)
-        local wakeData = json.decode(msg.Data)
-        
-        -- Process duplicate detection wake-up call
-        handleDuplicateFound(wakeData)
-    end
-)
-
--- Agent coordination functions
-function wakeUpForDuplicate(otherAgentId, similarity)
-    -- Wake up the other agent about duplicate
-    ao.send({
-        Target = otherAgentId,
-        Action = "Wake-Up-Duplicate",
-        Data = json.encode({
-            wakingAgent = AgentId,
-            duplicateOf = otherAgentId,
-            similarityScore = similarity,
-            artworkId = ArtworkData.id,
-            contentHash = ContentHash,
-            timestamp = os.time()
-        })
-    })
-    
-    -- Log duplicate detection locally
-    logDuplicateDetection(otherAgentId, similarity)
-end
-
-function handleDuplicateFound(duplicateData)
-    -- Store duplicate relationship
-    if not ArtworkData.duplicates then
-        ArtworkData.duplicates = {}
-    end
-    
-    ArtworkData.duplicates[duplicateData.respondingAgent or duplicateData.wakingAgent] = {
-        agentId = duplicateData.respondingAgent or duplicateData.wakingAgent,
-        similarityScore = duplicateData.similarityScore,
-        detectedAt = os.time(),
-        artworkId = duplicateData.artworkId
-    }
-    
-    -- Notify coordinator (optional)
-    notifyCoordinatorOfDuplicate(duplicateData)
-end
-
-function logDuplicateDetection(otherAgentId, similarity)
-    ao.send({
-        Target = ao.id,
-        Action = "Log-Duplicate",
-        Data = json.encode({
-            agentId = AgentId,
-            duplicateAgentId = otherAgentId,
-            similarityScore = similarity,
-            timestamp = os.time(),
-            artworkId = ArtworkData.id
-        })
-    })
-end
-
-function notifyCoordinatorOfDuplicate(duplicateData)
-    -- Find coordinator process (if configured)
-    if CoordinatorProcess then
-        ao.send({
-            Target = CoordinatorProcess,
-            Action = "Duplicate-Detected",
-            Data = json.encode({
-                reportingAgent = AgentId,
-                duplicateAgent = duplicateData.respondingAgent or duplicateData.wakingAgent,
-                similarityScore = duplicateData.similarityScore,
-                artworkIds = {ArtworkData.id, duplicateData.artworkId},
-                timestamp = os.time()
-            })
-        })
-    end
-end
-
--- Utility functions
-function convertToGrayscale(imageData, width, height)
-    -- Simplified grayscale conversion for demonstration
-    -- In practice, this would properly process image data
-    local pixels = {}
-    for i = 1, width * height do
-        pixels[i] = math.random(0, 255) -- Placeholder
-    end
-    return pixels
-end
-
-function calculateGenericHash(content)
-    -- Simple content hash for unknown types
-    return tostring(simpleHash(content))
-end
-
-function simpleHash(str)
-    local hash = 0
-    for i = 1, #str do
-        hash = hash + string.byte(str, i)
-        hash = hash % (2^32)
-    end
-    return hash
-end
-
-function splitWords(text)
-    local words = {}
-    for word in text:gmatch("%S+") do
-        table.insert(words, word:lower())
-    end
-    return words
-end
-
--- Heartbeat mechanism
-Handlers.add(
-    "Heartbeat",
-    Handlers.utils.hasMatchingTag("Action", "Heartbeat"),
-    function(msg)
-        LastHeartbeat = os.time()
-        
-        -- Respond to heartbeat
-        ao.send({
-            Target = msg.From,
-            Action = "Heartbeat-Response",
-            Data = json.encode({
-                agentId = AgentId,
-                status = "active",
-                timestamp = LastHeartbeat,
-                contentHash = ContentHash
-            })
-        })
-    end
-)
-
--- Initialization handler
-Handlers.add(
-    "Initialize", 
-    Handlers.utils.hasMatchingTag("Action", "Initialize-Agent"),
-    function(msg)
-        local initData = json.decode(msg.Data)
-        initializeAgent(initData.artworkData)
-        
-        ao.send({
-            Target = msg.From,
-            Action = "Agent-Initialized",
-            Data = json.encode({
-                agentId = AgentId,
-                contentHash = ContentHash,
-                status = "active"
-            })
-        })
-    end
-)
+Handlers.add('Relation-Notify', { Action = 'Relation-Notify' }, function(msg)
+  local ok, scores = pcall(json.decode, msg.Data or '{}')
+  local simham = tonumber(msg.Tags.SimHam or '0')
+  Artwork.edges[msg.From] = { type = msg.Tags.Type or 'related', weight = tonumber(msg.Tags.Weight or '0'), scores = ok and scores or {}, simham = simham }
+end)

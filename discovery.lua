@@ -1,95 +1,40 @@
--- discovery.lua - Discovery mechanisms for art agents
+-- discovery.lua
+-- Lightweight intro directory by SimHash prefix (2^P buckets). Not a coordinator.
+-- Agents self-register and query peers here, then talk to each other directly.
 
-json = require("json")
+local json = require('json')
 
-DiscoveryManager = {}
+DIR = DIR or { buckets = {}, last = os.time() }
+PREFIX_BITS = PREFIX_BITS or 12  -- 12 -> 4096 buckets; change via Config if needed
 
--- Arweave GraphQL query for agent discovery
-function DiscoveryManager.findAgentsByContent(contentType, tags)
-    -- This would use ArWeave GraphQL in practice
-    local query = {
-        query = [[
-            query FindAgents($tags: [TagFilter!]) {
-                transactions(tags: $tags, first: 50) {
-                    edges {
-                        node {
-                            id
-                            tags {
-                                name
-                                value
-                            }
-                            owner {
-                                address
-                            }
-                        }
-                    }
-                }
-            }
-        ]],
-        variables = {
-            tags = {
-                { name = "App-Name", values = {"ArtworkAgentNetwork"} },
-                { name = "Agent-Type", values = {"ArtAgent"} },
-                { name = "Artwork-Type", values = {contentType} }
-            }
-        }
-    }
-    
-    -- In actual implementation, this would make HTTP request to Arweave GraphQL
-    -- For now, return mock data structure
-    return mockArweaveDiscovery(contentType)
+local function patch()
+  Send({ device = 'patch@1.0', cache = { discovery = { last = DIR.last } } })
 end
 
-function mockArweaveDiscovery(contentType)
-    -- Mock response structure
-    return {
-        data = {
-            transactions = {
-                edges = {
-                    {
-                        node = {
-                            id = "mock-agent-1",
-                            tags = {
-                                {name = "Agent-Type", value = "ArtAgent"},
-                                {name = "Content-Hash", value = "123456789"},
-                                {name = "Artwork-Type", value = contentType}
-                            },
-                            owner = {address = "mock-owner-1"}
-                        }
-                    }
-                }
-            }
-        }
-    }
-end
+Handlers.add('Config', { Action = 'Config' }, function(msg)
+  local bits = tonumber(msg.Tags.PrefixBits or '')
+  if bits and bits >= 4 and bits <= 16 then PREFIX_BITS = bits end
+  msg.reply({ Action = 'OK' })
+  patch()
+end)
 
--- Content-based agent discovery
-function DiscoveryManager.findSimilarAgents(contentHash, threshold)
-    -- Query network for agents with similar content hashes
-    local candidates = {}
-    
-    -- In practice, this would query Arweave for agents with content hashes
-    -- within Hamming distance threshold
-    return candidates
-end
+Handlers.add('RegisterPrefix', { Action = 'RegisterPrefix' }, function(msg)
+  local prefix = msg.Tags.Prefix
+  if not prefix then return end
+  DIR.buckets[prefix] = DIR.buckets[prefix] or {}
+  DIR.buckets[prefix][msg.From] = true
+  DIR.last = os.time()
+  patch()
+  msg.reply({ Action = 'Registered' })
+end)
 
--- Bootstrap discovery using known seed agents
-function DiscoveryManager.bootstrapDiscovery(seedAgents)
-    local discoveredAgents = {}
-    
-    for _, seedAgent in ipairs(seedAgents) do
-        -- Contact seed agent for peer list
-        ao.send({
-            Target = seedAgent,
-            Action = "Request-Peer-List",
-            Data = json.encode({
-                requestingAgent = ao.id,
-                timestamp = os.time()
-            })
-        })
+Handlers.add('QueryPrefix', { Action = 'QueryPrefix' }, function(msg)
+  local prefix = msg.Tags.Prefix
+  local peers = {}
+  if prefix and DIR.buckets[prefix] then
+    for pid, _ in pairs(DIR.buckets[prefix]) do
+      if pid ~= msg.From then table.insert(peers, pid) end
     end
-    
-    return discoveredAgents
-end
-
-return DiscoveryManager
+  end
+  msg.reply({ Action = 'QueryResult', Data = json.encode({ peers = peers, prefix = prefix }) })
+end)
