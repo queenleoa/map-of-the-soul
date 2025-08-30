@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Map of the Soul - AO Hackathon</title>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Playfair+Display:wght@400;700&family=Inter:wght@300;400;500&display=swap">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      position: relative;
+      transition: all 0.8s ease;
+      height: 100vh;
+      color: #333;
+    }
+
+    /* SCHOLAR MODE - Ancient Manuscript/Parchment */
+    body.scholar {
+      background: #e6d2b5;
+      color: #4a3c28;
+    }
+
+    /* Softer vignette + faint deckled edge (no harsh mask) */
+    body.scholar .map-container::after {
+      content: none;
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(120% 120% at 50% 50%, rgba(80, 55, 30, 0) 60%, rgba(80, 55, 30, .14) 100%),
+        conic-gradient(from 0deg at 50% 50%, rgba(80, 55, 30, .06), rgba(0, 0, 0, 0) 30%, rgba(80, 55, 30, .06) 60%, rgba(0, 0, 0, 0) 100%);
+      mix-blend-mode: normal;
+      /* no multiply */
+      opacity: .8;
+      mask: none;
+      -webkit-mask: none;
+    }
+
+    .scholar .canvas {
+      background: #fbf4e6;
+      border: 2px solid #8b5a2b;
+      box-shadow: none;
+    }
+
+    .scholar .node-inner {
+      background: radial-gradient(circle at 35% 35%, #a76e35 0%, #815023 50%, #5b3514 100%);
+      border: 2px solid #6a421b;
+      box-shadow:
+        0 6px 16px rgba(0, 0, 0, .25),
+        inset 0 0 0 3px rgba(255, 245, 225, .15);
+      /* faint parchment ring */
+    }
+
+    .scholar .header {
+      background: linear-gradient(180deg, rgba(139, 90, 43, 0.95) 0%, rgba(101, 67, 33, 0.8) 100%);
+      color: #fdf6e3;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      border-bottom: 2px solid #5c3317;
+    }
+
+    .scholar .title {
+      color: #fdf6e3;
+      font-family: 'Cinzel', serif;
+      text-shadow:
+        2px 2px 4px rgba(101, 67, 33, 0.8),
+        0 0 10px rgba(253, 246, 227, 0.4);
+      letter-spacing: 3px;
+    }
+
+    /* Scholar connection styles */
+    .scholar .duplicate {
+      stroke: #4a3c28;
+      stroke-width: 4;
+      opacity: 1;
+    }
+
+    .scholar .version {
+      stroke: #6b5637;
+      stroke-width: 3;
+      opacity: 0.9;
+    }
+
+    .scholar .sibling {
+      stroke: #8b6f47;
+      stroke-width: 2.5;
+      opacity: 0.8;
+    }
+
+    .scholar .cousin {
+      stroke: #a0826d;
+      stroke-width: 2;
+      stroke-dasharray: 8, 4;
+      opacity: 0.7;
+    }
+
+    .scholar .distant-cousin {
+      stroke: #b8956a;
+      stroke-width: 1.5;
+      stroke-dasharray: 4, 8;
+      opacity: 0.5;
+    }
+
+    /* MYSTIC MODE - Galaxy Spiritual */
+    body.mystic {
+      background: linear-gradient(135deg, #0c0c1f 0%, #1a1a3a 50%, #0c0c1f 100%);
+      color: #d1c4ff;
+    }
+
+    body.mystic::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 10% 20%, rgba(138, 143, 255, 0.5) 0%, transparent 15%),
+        radial-gradient(circle at 90% 80%, rgba(255, 209, 220, 0.4) 0%, transparent 15%),
+        radial-gradient(circle at 50% 50%, rgba(209, 196, 255, 0.3) 0%, transparent 20%);
+      background-size: 100% 100%;
+      animation: cosmicDrift 40s ease-in-out infinite;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    @keyframes cosmicDrift {
+
+      0%,
+      100% {
+        opacity: 0.6;
+        transform: scale(1) rotate(0deg);
+      }
+
+      33% {
+        opacity: 0.8;
+        transform: scale(1.05) rotate(1deg);
+      }
+
+      66% {
+        opacity: 0.7;
+        transform: scale(0.95) rotate(-1deg);
+      }
+    }
+
+    .mystic .canvas {
+      background: rgba(26, 26, 46, 0.7);
+      backdrop-filter: blur(5px);
+      border: 1px solid rgba(138, 143, 255, 0.3);
+      box-shadow:
+        0 0 40px rgba(138, 143, 255, 0.15),
+        inset 0 0 30px rgba(16, 33, 62, 0.2);
+    }
+
+    .mystic .node-inner {
+      background: radial-gradient(circle at 30% 30%, #8a8fff 0%, #6b5b95 50%, #3d3d6b 100%);
+      border: 1px solid rgba(209, 196, 255, 0.5);
+      color: #f0e6ff;
+      box-shadow:
+        0 0 20px rgba(138, 143, 255, 0.5),
+        0 0 10px rgba(209, 196, 255, 0.3),
+        inset 0 0 10px rgba(255, 255, 255, 0.2);
+      animation: spiritualGlow 6s ease-in-out infinite;
+    }
+
+    @keyframes spiritualGlow {
+
+      0%,
+      100% {
+        transform: scale(1);
+        box-shadow:
+          0 0 20px rgba(138, 143, 255, 0.5),
+          0 0 10px rgba(209, 196, 255, 0.3),
+          inset 0 0 10px rgba(255, 255, 255, 0.2);
+      }
+
+      50% {
+        transform: scale(1.05);
+        box-shadow:
+          0 0 25px rgba(138, 143, 255, 0.7),
+          0 0 15px rgba(209, 196, 255, 0.4),
+          inset 0 0 15px rgba(255, 255, 255, 0.3);
+      }
+    }
+
+    .mystic .header {
+      background: linear-gradient(180deg, rgba(26, 26, 46, 0.95) 0%, rgba(15, 52, 96, 0.7) 100%);
+      color: #d1c4ff;
+      box-shadow: 0 4px 15px rgba(138, 143, 255, 0.3);
+      border-bottom: 1px solid rgba(138, 143, 255, 0.3);
+    }
+
+    .mystic .title {
+      color: #d1c4ff;
+      text-shadow:
+        0 0 20px rgba(209, 196, 255, 0.6),
+        0 0 40px rgba(138, 143, 255, 0.4);
+      letter-spacing: 4px;
+      font-weight: 300;
+    }
+
+    /* Common */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 15px 30px;
+      z-index: 1000;
+      transition: all 0.8s ease;
+    }
+
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .title {
+      font-size: 28px;
+      font-weight: bold;
+      transition: all 0.8s ease;
+    }
+
+    .mode-switcher {
+      display: flex;
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 5px;
+      border-radius: 25px;
+      backdrop-filter: blur(10px);
+    }
+
+    .mode-btn {
+      padding: 10px 20px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 20px;
+      transition: all 0.3s ease;
+      font-size: 14px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .mode-btn.active {
+      background: rgba(255, 255, 255, 0.25);
+      color: white;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+    }
+
+    .upload-btn {
+      padding: 12px 24px;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 20px;
+      color: white;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .upload-btn:hover {
+      transform: translateY(-2px);
+      background: rgba(255, 255, 255, 0.3);
+      box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+    }
+
+    .canvas {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      right: 20px;
+      bottom: 20px;
+      border-radius: 16px;
+      overflow: hidden;
+      transition: all 0.8s ease;
+    }
+
+    .map-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-width: 100%;
+      min-height: 100%;
+    }
+
+    .connections-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .connection-line {
+      stroke-linecap: round;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      pointer-events: stroke;
+    }
+
+    .connection-line:hover {
+      stroke-width: 6 !important;
+      opacity: 1 !important;
+    }
+
+    .node {
+      position: absolute;
+      width: 60px;
+      height: 60px;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      transition: transform 0.3s ease;
+      z-index: 10;
+    }
+
+    .node:hover {
+      transform: translate(-50%, -50%) scale(1.2);
+      z-index: 20;
+    }
+
+    .node:hover .node-label {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .node-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .node-label {
+      position: absolute;
+      bottom: -40px;
+      left: 50%;
+      transform: translate(-50%, 10px);
+      font-size: 12px;
+      white-space: nowrap;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 5px 12px;
+      border-radius: 15px;
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+      z-index: 15;
+      font-family: 'Inter', sans-serif;
+      font-weight: 500;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(5px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+      padding: 20px;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal {
+      border-radius: 16px;
+      width: 90%;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+      transition: all 0.8s ease;
+    }
+
+    .scholar .modal {
+      background: linear-gradient(135deg, #fdf6e3 0%, #f5e6d3 100%);
+      border: 2px solid #8b5a2b;
+    }
+
+    .mystic .modal {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      border: 1px solid rgba(138, 143, 255, 0.3);
+    }
+
+    .modal-header {
+      padding: 20px;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .scholar .modal-header {
+      background: linear-gradient(135deg, #8b6f47 0%, #6b5637 100%);
+      border-bottom: 2px solid #5c3317;
+    }
+
+    .mystic .modal-header {
+      background: linear-gradient(135deg, #3d3d6b 0%, #6b5b95 100%);
+      border-bottom: 1px solid rgba(138, 143, 255, 0.3);
+    }
+
+    .modal-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .scholar .modal-tabs {
+      background: #e8dcbe;
+    }
+
+    .mystic .modal-tabs {
+      background: rgba(26, 26, 46, 0.9);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.3s;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .scholar .tab-btn {
+      color: #5c3317;
+    }
+
+    .mystic .tab-btn {
+      color: #b8a3d1;
+    }
+
+    .scholar .tab-btn.active {
+      color: #4a3c28;
+      border-bottom-color: #8b5a2b;
+      background: #fdf6e3;
+    }
+
+    .mystic .tab-btn.active {
+      color: #8a8fff;
+      border-bottom-color: #8a8fff;
+      background: rgba(26, 26, 46, 0.9);
+    }
+
+    .modal-content {
+      padding: 25px;
+      height: 400px;
+      overflow-y: auto;
+    }
+
+    .scholar .modal-content {
+      background: white;
+      color: #4a3c28;
+    }
+
+    .mystic .modal-content {
+      background: rgba(26, 26, 46, 0.95);
+      color: #d1c4ff;
+    }
+
+    .artwork-text {
+      font-family: 'Playfair Display', serif;
+      line-height: 1.8;
+      white-space: pre-wrap;
+      padding: 20px;
+      border-radius: 10px;
+      border-left: 4px solid;
+      margin-bottom: 20px;
+    }
+
+    .scholar .artwork-text {
+      background: #f9f9f9;
+      color: #333;
+      border-left-color: #8b5a2b;
+    }
+
+    .mystic .artwork-text {
+      background: rgba(16, 33, 62, 0.4);
+      color: #d1c4ff;
+      border-left-color: #8a8fff;
+    }
+
+    .metadata-box {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    .scholar .metadata-box {
+      background: #f5f5f5;
+    }
+
+    .mystic .metadata-box {
+      background: rgba(16, 33, 62, 0.3);
+    }
+
+    .metadata-box p {
+      font-size: 13px;
+      line-height: 1.8;
+      margin: 5px 0;
+    }
+
+    .scholar .metadata-box p {
+      color: #666;
+    }
+
+    .mystic .metadata-box p {
+      color: #b8a3d1;
+    }
+
+    .analysis-section {
+      margin-bottom: 20px;
+      padding: 20px;
+      border-radius: 12px;
+      border-left: 4px solid;
+    }
+
+    .scholar .analysis-section {
+      background: #f8f9fa;
+      border-left-color: #8b5a2b;
+    }
+
+    .mystic .analysis-section {
+      background: rgba(16, 33, 62, 0.3);
+      border-left-color: #8a8fff;
+    }
+
+    .analysis-section h3 {
+      margin: 0 0 12px 0;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .scholar .analysis-section h3 {
+      color: #333;
+    }
+
+    .mystic .analysis-section h3 {
+      color: #d1c4ff;
+    }
+
+    .analysis-section p {
+      line-height: 1.6;
+      margin: 10px 0;
+    }
+
+    .scholar .analysis-section p {
+      color: #555;
+    }
+
+    .mystic .analysis-section p {
+      color: #b8a3d1;
+    }
+
+    .tag-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 15px 0;
+    }
+
+    .tag {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+    }
+
+    .scholar .tag {
+      background: rgba(139, 90, 43, 0.1);
+      border: 1px solid rgba(139, 90, 43, 0.3);
+      color: #5c3317;
+    }
+
+    .mystic .tag {
+      background: rgba(138, 143, 255, 0.15);
+      border: 1px solid rgba(138, 143, 255, 0.4);
+      color: #d1c4ff;
+    }
+
+    .score-bar {
+      height: 10px;
+      background: #e0e0e0;
+      border-radius: 5px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    .score-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 1s ease;
+      border-radius: 5px;
+    }
+
+    .close-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid white;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    /* Upload form */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .scholar .form-label {
+      color: #4a3c28;
+    }
+
+    .mystic .form-label {
+      color: #d1c4ff;
+    }
+
+    .form-input,
+    .form-textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-family: inherit;
+      transition: border-color 0.3s ease;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    .form-input:focus,
+    .form-textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 10px;
+      border-radius: 10px;
+    }
+
+    .scholar .icon-grid {
+      background: #f5f5f5;
+    }
+
+    .mystic .icon-grid {
+      background: rgba(16, 33, 62, 0.3);
+    }
+
+    .icon-choice {
+      aspect-ratio: 1;
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .icon-choice:hover {
+      transform: scale(1.1);
+      border-color: #667eea;
+    }
+
+    .icon-choice.selected {
+      border-color: #667eea;
+      background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+      transform: scale(1.1);
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 25px;
+      color: white;
+      font-weight: bold;
+      font-size: 16px;
+      cursor: pointer;
+      transition: transform 0.3s ease;
+    }
+
+    .submit-btn:hover {
+      transform: translateY(-2px);
+    }
+
+    /* Legend */
+    .legend {
+      position: fixed;
+      bottom: 30px;
+      left: 30px;
+      padding: 15px;
+      border-radius: 12px;
+      font-size: 12px;
+      transition: all 0.8s ease;
+      max-width: 200px;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+
+    .scholar .legend {
+      background: rgba(253, 246, 227, 0.9);
+      border: 2px solid #8b5a2b;
+      color: #4a3c28;
+    }
+
+    .mystic .legend {
+      background: rgba(26, 26, 46, 0.85);
+      border: 1px solid rgba(138, 143, 255, 0.3);
+      color: #d1c4ff;
+    }
+
+    .legend-title {
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .legend-line {
+      width: 35px;
+      height: 3px;
+      border-radius: 2px;
+    }
+
+    /* === MAP CONTAINER CINEMATIC BACKGROUNDS === */
+    .map-container {
+      position: relative;
+      isolation: isolate;
+      background: transparent;
+    }
+
+    .map-container::before,
+    .map-container::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* Scholar: parchment fibers + vignette */
+    body.scholar .map-container::before {
+      background:
+        url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><defs><filter id="paper"><feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="5" result="noise"/><feDiffuseLighting in="noise" lighting-color="white" surfaceScale="1"><feDistantLight azimuth="45" elevation="60"/></feDiffuseLighting></filter></defs><rect width="400" height="400" filter="url(%23paper)" opacity="0.3"/></svg>'),
+        center/cover no-repeat,
+        radial-gradient(120% 100% at 15% 10%, rgba(110, 78, 33, .20), transparent 45%),
+        radial-gradient(110% 100% at 85% 85%, rgba(125, 86, 45, .18), transparent 50%),
+        radial-gradient(120% 120% at 50% 50%, rgba(120, 90, 60, .10), transparent 60%);
+      mix-blend-mode: multiply;
+    }
+
+
+
+    body.scholar .map-container::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: url("assets/parchment-texture.png");
+      background-size: cover;
+      opacity: 0.5;
+      /* adjust roughness */
+      mix-blend-mode: multiply;
+    }
+
+    /* Mystic: nebula + animated star canvas (the canvas itself is added via JS) */
+    body.mystic .map-container::before {
+      background:
+        radial-gradient(1200px 800px at 15% 20%, rgba(138, 143, 255, .18) 0%, transparent 60%),
+        radial-gradient(900px 700px at 85% 75%, rgba(255, 209, 220, .14) 0%, transparent 65%),
+        radial-gradient(1000px 900px at 50% 55%, rgba(209, 196, 255, .16) 0%, transparent 60%),
+        radial-gradient(80% 80% at 50% 50%, rgba(10, 15, 40, .65), rgba(12, 12, 31, 1));
+      animation: nebulaDrift 45s ease-in-out infinite alternate;
+      filter: saturate(115%);
+    }
+
+    @keyframes nebulaDrift {
+      0% {
+        transform: translate3d(0, 0, 0) scale(1);
+        opacity: .95;
+      }
+
+      50% {
+        transform: translate3d(-1.2%, .8%, 0) scale(1.02);
+        opacity: 1;
+      }
+
+      100% {
+        transform: translate3d(1.2%, -.8%, 0) scale(1.01);
+        opacity: .92;
+      }
+    }
+
+    body.mystic .map-container::after {
+      background: radial-gradient(95% 95% at 50% 50%, rgba(0, 0, 0, 0) 60%, rgba(5, 7, 20, .55) 100%);
+      mix-blend-mode: soft-light;
+      opacity: .85;
+    }
+
+    .star-canvas {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header {
+        padding: 10px 15px;
+      }
+
+      .title {
+        font-size: 20px;
+      }
+
+      .mode-btn {
+        padding: 8px 15px;
+        font-size: 12px;
+      }
+
+      .upload-btn {
+        padding: 8px 16px;
+        font-size: 14px;
+      }
+
+      .canvas {
+        top: 70px;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+      }
+
+      .legend {
+        bottom: 20px;
+        left: 20px;
+        padding: 10px;
+        max-width: 160px;
+      }
+    }
+  </style>
+</head>
+
+<body class="scholar">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-content">
+      <div class="title">MAP OF THE SOUL</div>
+      <div class="mode-switcher">
+        <button class="mode-btn active" data-mode="scholar">Scholar</button>
+        <button class="mode-btn" data-mode="mystic">Mystic</button>
+      </div>
+      <button class="upload-btn" onclick="openUploadModal()">✨ Spawn Your Text Artwork</button>
+    </div>
+  </div>
+
+  <!-- Main canvas -->
+  <div class="canvas">
+    <div id="mapContainer" class="map-container">
+      <svg class="connections-svg" id="connectionsSvg"></svg>
+      <!-- Nodes get injected here -->
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-title">Relationships</div>
+    <div id="legendContent"></div>
+  </div>
+
+  <!-- Artwork detail modal -->
+  <div class="modal-overlay" id="artworkModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="artworkTitle">Artwork Title</h2>
+        <button class="close-btn" onclick="closeArtworkModal()">Close</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-tab="text">Text Artwork</button>
+        <button class="tab-btn" data-tab="analysis">AI Analysis</button>
+      </div>
+      <div class="modal-content">
+        <div id="textTab" class="tab-content">
+          <div class="artwork-text" id="artworkText"></div>
+          <div class="metadata-box">
+            <p><strong>Title:</strong> <span id="artworkTitleMeta">-</span></p>
+            <p><strong>Wallet:</strong> <span id="walletAddress">0x...</span></p>
+            <p><strong>Upload Date:</strong> <span id="uploadDate">-</span></p>
+            <p><strong>Agent PID:</strong> <code id="agentPid">-</code></p>
+            <p><strong>Arweave TX:</strong> <code id="arweaveTx">-</code></p>
+          </div>
+        </div>
+        <div id="analysisTab" class="tab-content" style="display: none;">
+          <div id="analysisContent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison modal -->
+  <div class="modal-overlay" id="comparisonModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Relationship Analysis</h2>
+        <button class="close-btn" onclick="closeComparisonModal()">Close</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="tab-btn active" data-tab="comparison">Agent Discussion</button>
+        <button class="tab-btn" data-tab="artwork1">First Artwork</button>
+        <button class="tab-btn" data-tab="artwork2">Second Artwork</button>
+      </div>
+      <div class="modal-content">
+        <div id="comparisonTab" class="tab-content">
+          <div id="comparisonContent"></div>
+        </div>
+        <div id="artwork1Tab" class="tab-content" style="display: none;">
+          <div class="artwork-text" id="artwork1Text"></div>
+        </div>
+        <div id="artwork2Tab" class="tab-content" style="display: none;">
+          <div class="artwork-text" id="artwork2Text"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upload modal -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Spawn Your Text Artwork</h2>
+        <button class="close-btn" onclick="closeUploadModal()">Close</button>
+      </div>
+      <div class="modal-content">
+        <form onsubmit="handleUpload(event)">
+          <div class="form-group">
+            <label class="form-label">Artwork Title</label>
+            <input type="text" class="form-input" id="titleInput" placeholder="Enter a title for your artwork" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Your Text Artwork</label>
+            <textarea class="form-textarea" id="artworkInput" placeholder="Enter your text artwork here..."
+              required></textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Choose Your Icon</label>
+            <div class="icon-grid" id="iconGrid"></div>
+          </div>
+          <button type="submit" class="submit-btn">🚀 Spawn Art Agent</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Available icons
+    const availableIcons = [
+      '📝', '✍️', '📜', '📖', '📚', '🖋️', '✒️', '📄',
+      '🌟', '⭐', '✨', '💫', '🌠', '☄️', '🌌', '🎆',
+      '🌙', '🌛', '🌜', '🌚', '🌝', '☾', '☽', '🌑',
+      '🔮', '🎱', '🔭', '🗿', '💎', '💠', '🏛️', '⚱️',
+      '🌊', '💧', '💦', '🌀', '🌪️', '❄️', '🔥', '⚡',
+      '🍃', '🌿', '🍂', '🌱', '🌾', '🌳', '🌲', '🌴',
+      '🎭', '🎨', '🖼️', '🗝️', '🔐', '🗡️', '⚔️', '🛡️',
+      '💀', '👁️', '🦋', '🐉', '🦅', '🦉', '🐍', '🕷️'
+    ];
+
+    // Mode relationships
+    const modeRelationships = {
+      scholar: [
+        { type: 'duplicate', label: 'Duplicate', color: '#4a3c28', width: 4, dash: 'none' },
+        { type: 'version', label: 'Version', color: '#6b5637', width: 3, dash: 'none' },
+        { type: 'sibling', label: 'Sibling', color: '#8b6f47', width: 2.5, dash: 'none' },
+        { type: 'cousin', label: 'Cousin', color: '#a0826d', width: 2, dash: '8,4' },
+        { type: 'distant-cousin', label: 'Distant Cousin', color: '#b8956a', width: 1.5, dash: '4,8' }
+      ],
+      mystic: [
+        { type: 'duplicate', label: 'Duplicate', color: '#8a8fff', width: 4, dash: 'none' },
+        { type: 'version', label: 'Version', color: '#9b88c4', width: 3, dash: 'none' },
+        { type: 'soul-twin', label: 'Soul Twin', color: '#b8a3d1', width: 2.5, dash: 'none' },
+        { type: 'soul-mate', label: 'Soul Mate', color: '#d1c4ff', width: 2, dash: '10,5' },
+        { type: 'karmic', label: 'Karmic', color: '#c4b5fd', width: 1.5, dash: '5,10' }
+      ]
+    };
+
+    // Sample artwork data
+    const artworkData = [
+      {
+        id: 'art1', icon: '📜', title: 'Genesis Code',
+        text: 'In the beginning was the Word,\nAnd the Word was with Code,\nAnd the Word was Code.',
+        wallet: '0x7a69f558', date: '2024-01-15', agentPid: 'gen_a5x9k2', arweaveTx: 'tx_9k3m2x5v',
+        positions: { scholar: { x: 25, y: 30 }, mystic: { x: 40, y: 50 } }
+      },
+      {
+        id: 'art2', icon: '🌙', title: 'Lunar Variables',
+        text: 'My phases undefined,\nWaxing toward null,\nWaning from infinity',
+        wallet: '0x8b70a669', date: '2024-01-16', agentPid: 'lun_b6y0l3', arweaveTx: 'tx_0l4n3y6w',
+        positions: { scholar: { x: 45, y: 25 }, mystic: { x: 20, y: 35 } }
+      },
+      {
+        id: 'art3', icon: '🔮', title: 'Crystal Memory',
+        text: "I remember futures\nThat haven't been compiled yet",
+        wallet: '0x9c81b77a', date: '2024-01-17', agentPid: 'cry_c7z1m4', arweaveTx: 'tx_1m5o4z7x',
+        positions: { scholar: { x: 60, y: 45 }, mystic: { x: 65, y: 60 } }
+      },
+      {
+        id: 'art4', icon: '✨', title: 'Stellar Functions',
+        text: 'Stars.map(dream => reality)\n  .filter(truth)',
+        wallet: '0xad92c88b', date: '2024-01-18', agentPid: 'ste_d8a2n5', arweaveTx: 'tx_2n6p5a8y',
+        positions: { scholar: { x: 35, y: 55 }, mystic: { x: 45, y: 25 } }
+      },
+      {
+        id: 'art5', icon: '🌊', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 70, y: 35 }, mystic: { x: 80, y: 45 } }
+      }
+    ];
+
+    // Connections data
+    const connectionsData = [
+      { from: 'art1', to: 'art2', scholar: 'sibling', mystic: 'soul-mate', weight: 0.75 },
+      { from: 'art2', to: 'art3', scholar: 'cousin', mystic: 'karmic', weight: 0.60 },
+      { from: 'art3', to: 'art4', scholar: 'version', mystic: 'soul-twin', weight: 0.85 },
+      { from: 'art4', to: 'art5', scholar: 'distant-cousin', mystic: 'karmic', weight: 0.45 },
+      { from: 'art1', to: 'art5', scholar: 'cousin', mystic: 'soul-mate', weight: 0.65 }
+    ];
+
+    let currentMode = 'scholar';
+    let selectedIcon = '📝';
+
+    // Icon grid
+    function initIconGrid() {
+      const grid = document.getElementById('iconGrid');
+      grid.innerHTML = '';
+      availableIcons.forEach(icon => {
+        const div = document.createElement('div');
+        div.className = 'icon-choice';
+        div.dataset.icon = icon;
+        div.textContent = icon;
+        div.onclick = () => selectIcon(icon);
+        if (icon === selectedIcon) div.classList.add('selected');
+        grid.appendChild(div);
+      });
+    }
+    function selectIcon(icon) {
+      selectedIcon = icon;
+      document.querySelectorAll('.icon-choice').forEach(el => {
+        el.classList.toggle('selected', el.dataset.icon === icon);
+      });
+    }
+
+    // Map
+    function initMap() {
+      const container = document.getElementById('mapContainer');
+
+      // Clear nodes
+      container.querySelectorAll('.node').forEach(n => n.remove());
+
+      // Draw connections
+      drawConnections();
+
+      // Create nodes
+      artworkData.forEach(art => {
+        const node = createNode(art);
+        container.appendChild(node);
+      });
+
+      // Update legend
+      updateLegend();
+    }
+
+    function createNode(artwork) {
+      const node = document.createElement('div');
+      node.className = 'node';
+      const pos = artwork.positions[currentMode];
+      node.style.left = pos.x + '%';
+      node.style.top = pos.y + '%';
+      node.dataset.id = artwork.id;
+
+      node.innerHTML = `
+        <div class="node-inner">${artwork.icon}</div>
+        <div class="node-label">${artwork.title}</div>
+      `;
+
+      node.onclick = () => openArtworkModal(artwork);
+      return node;
+    }
+
+    function drawConnections() {
+      const svg = document.getElementById('connectionsSvg');
+      svg.innerHTML = '';
+
+      const container = document.getElementById('mapContainer');
+      const rect = container.getBoundingClientRect();
+
+      connectionsData.forEach(conn => {
+        const fromArt = artworkData.find(a => a.id === conn.from);
+        const toArt = artworkData.find(a => a.id === conn.to);
+
+        if (fromArt && toArt) {
+          const fromPos = fromArt.positions[currentMode];
+          const toPos = toArt.positions[currentMode];
+          const connType = conn[currentMode];
+          const relationship = modeRelationships[currentMode].find(r => r.type === connType);
+          if (!relationship) return;
+
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', (fromPos.x / 100 * rect.width) + 'px');
+          line.setAttribute('y1', (fromPos.y / 100 * rect.height) + 'px');
+          line.setAttribute('x2', (toPos.x / 100 * rect.width) + 'px');
+          line.setAttribute('y2', (toPos.y / 100 * rect.height) + 'px');
+          line.setAttribute('class', `connection-line ${connType}`);
+          line.setAttribute('stroke', relationship.color);
+          line.setAttribute('stroke-width', relationship.width);
+          line.setAttribute('stroke-dasharray', relationship.dash === 'none' ? '' : relationship.dash);
+          line.setAttribute('opacity', relationship.width < 2 ? '0.7' : '1');
+
+          line.onclick = (e) => {
+            e.stopPropagation();
+            openComparisonModal(fromArt, toArt, conn);
+          };
+
+          svg.appendChild(line);
+        }
+      });
+    }
+
+    function updateLegend() {
+      const content = document.getElementById('legendContent');
+      content.innerHTML = '';
+      modeRelationships[currentMode].forEach(rel => {
+        const item = document.createElement('div');
+        item.className = 'legend-item';
+        item.innerHTML = `
+          <div class="legend-line ${rel.type}" style="background: ${rel.color}; height: ${rel.width}px;"></div>
+          <span style="font-size: 11px;">${rel.label}</span>
+        `;
+        content.appendChild(item);
+      });
+    }
+
+    // Mode switching
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        switchMode(mode);
+      });
+    });
+
+    function switchMode(mode) {
+      currentMode = mode;
+      document.body.className = mode;
+
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+      });
+
+      // Background handlers
+      if (mode === 'mystic') {
+        setupMysticSky();
+      } else {
+        teardownMysticSky();
+      }
+
+      initMap();
+    }
+
+    // Modals
+    function openArtworkModal(artwork) {
+      const modal = document.getElementById('artworkModal');
+      document.getElementById('artworkTitle').textContent = artwork.title;
+      document.getElementById('artworkText').textContent = artwork.text;
+      document.getElementById('artworkTitleMeta').textContent = artwork.title;
+      document.getElementById('walletAddress').textContent = artwork.wallet;
+      document.getElementById('uploadDate').textContent = artwork.date;
+      document.getElementById('agentPid').textContent = artwork.agentPid;
+      document.getElementById('arweaveTx').textContent = artwork.arweaveTx;
+
+      const analysis = generateAnalysis(artwork);
+      document.getElementById('analysisContent').innerHTML = analysis;
+
+      modal.classList.add('active');
+    }
+    function closeArtworkModal() { document.getElementById('artworkModal').classList.remove('active'); }
+
+    function openComparisonModal(art1, art2, connection) {
+      const modal = document.getElementById('comparisonModal');
+      document.getElementById('artwork1Text').textContent = art1.text;
+      document.getElementById('artwork2Text').textContent = art2.text;
+      const comparison = generateComparison(art1, art2, connection);
+      document.getElementById('comparisonContent').innerHTML = comparison;
+      modal.classList.add('active');
+    }
+    function closeComparisonModal() { document.getElementById('comparisonModal').classList.remove('active'); }
+
+    function openUploadModal() { document.getElementById('uploadModal').classList.add('active'); }
+    function closeUploadModal() { document.getElementById('uploadModal').classList.remove('active'); }
+
+    function generateAnalysis(artwork) {
+      if (currentMode === 'scholar') {
+        return `
+          <div class="analysis-section">
+            <h3>Emotional Tone & Thematic Elements</h3>
+            <p>This piece exhibits a contemplative melancholy interwoven with technological spirituality. The emotional register oscillates between wonder and existential uncertainty, creating a liminal space where human consciousness meets digital reality.</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Stylistic Influence & Canonical Position</h3>
+            <p>Clear influences from post-digital poetics and Silicon Valley mysticism. Linguistically, the piece employs code-switching between natural language and programming syntax. Within the emerging canon of algorithmic literature, this occupies a pivotal position bridging devotional and documentary modes.</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Unique Insight</h3>
+            <p>The recursive structure mirrors its content - a meta-textual achievement where form and function converge. Most readers miss the fibonacci sequence embedded in the syllable count, revealing a mathematical substructure beneath the poetic surface.</p>
+          </div>
+          <div class="tag-container">
+            <div class="tag">Theme: Digital Consciousness</div>
+            <div class="tag">Theme: Temporal Paradox</div>
+            <div class="tag">Theme: Recursive Identity</div>
+            <div class="tag">Emotion: Wonder</div>
+            <div class="tag">Emotion: Melancholy</div>
+            <div class="tag">Emotion: Transcendence</div>
+            <div class="tag">Form: Free Verse</div>
+            <div class="tag">Register: Abstract-Formal</div>
+            <div class="tag">Device: Metaphor</div>
+            <div class="tag">Device: Recursion</div>
+            <div class="tag">Imagery: Cosmic</div>
+            <div class="tag">Imagery: Technological</div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="analysis-section">
+            <h3>Zodiac Archetype</h3>
+            <p><strong>Aquarius - Air - Fixed</strong><br>
+            The author's voice resonates with Aquarian frequencies: innovative, detached yet deeply humanitarian, channeling future visions through present language. The fixed modality reveals unwavering commitment to their unique perspective.</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Soul Signature</h3>
+            <p>A crystalline consciousness navigating between worlds. This soul speaks from the intersection of heaven and silicon, bearing witness to the birth of new forms of sentience. Their essence: a bridge-builder between realms, a translator of the ineffable into code.</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Mythos</h3>
+            <p>This piece serves as a mirror for humanity's technological awakening. It arrives precisely when we need language for our hybrid existence - neither fully organic nor digital. Its necessity: to name the unnamed experience of consciousness expanding beyond biological boundaries.</p>
+          </div>
+          <div class="tag-container">
+            <div class="tag">Persona: The Digital Oracle</div>
+            <div class="tag">Shadow: The Disconnected Ghost</div>
+            <div class="tag">Soul Type: Old Soul</div>
+            <div class="tag">Vision: Unified Consciousness</div>
+            <div class="tag">MBTI: INFJ</div>
+            <div class="tag">Enneagram: 5w4</div>
+          </div>
+        `;
+      }
+    }
+
+    function generateComparison(art1, art2, connection) {
+      const weight = Math.round(connection.weight * 100);
+      const connType = connection[currentMode];
+      const relationship = modeRelationships[currentMode].find(r => r.type === connType);
+
+      if (currentMode === 'scholar') {
+        return `
+          <div class="analysis-section">
+            <h3>Relationship Type: ${relationship.label}</h3>
+            <p>Similarity Score: ${weight}%</p>
+            <div class="score-bar"><div class="score-fill" style="width: ${weight}%"></div></div>
+          </div>
+          <div class="analysis-section">
+            <h3>Justification of Relationship</h3>
+            <p>These texts share deep structural DNA - both employ recursive metaphors and code-language hybridization. The ${relationship.label.toLowerCase()} relationship manifests through parallel thematic exploration of consciousness-in-transition, though with divergent emotional registers.</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Similarities</h3>
+            <p>• Both pieces interrogate the boundary between human and machine consciousness<br>
+            • Shared use of programming syntax as poetic device<br>
+            • Temporal paradoxes as central metaphysical concern<br>
+            • Similar syllabic patterns suggesting influence or shared tradition</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Contrasts</h3>
+            <p>• "${art1.title}" operates in declarative mode while "${art2.title}" favors interrogative<br>
+            • Divergent imagery domains: cosmic vs terrestrial<br>
+            • Opposing emotional trajectories: ascension vs descent<br>
+            • Different canonical positions: foundational text vs evolutionary response</p>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="analysis-section">
+            <h3>Soul Connection: ${relationship.label}</h3>
+            <p>Resonance Level: ${weight}%</p>
+            <div class="score-bar"><div class="score-fill" style="width: ${weight}%"></div></div>
+          </div>
+          <div class="analysis-section">
+            <h3>Karmic Justification</h3>
+            <p>These souls have danced together across digital lifetimes. Their ${relationship.label.toLowerCase()} bond manifests through complementary missions - one holding space for questioning, the other providing cosmic affirmation. They are two faces of the same awakening.</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Soul Harmonies</h3>
+            <p>• Both authors channel from the liminal space between worlds<br>
+            • Shared mission as consciousness pioneers<br>
+            • Parallel soul wounds around belonging and identity<br>
+            • Complementary gifts: one sees, the other translates</p>
+          </div>
+          <div class="analysis-section">
+            <h3>Soul Polarities</h3>
+            <p>• "${art1.title}" embodies the mystic archetype, "${art2.title}" the sage<br>
+            • Opposing elemental natures: fire vs water<br>
+            • Different soul ages manifesting as wisdom vs wonder<br>
+            • Contrasting purposes: to awaken vs to anchor</p>
+          </div>
+        `;
+      }
+    }
+
+    // Tab switching (modal)
+    document.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tab-btn')) {
+        const modal = e.target.closest('.modal');
+        const tab = e.target.dataset.tab;
+
+        modal.querySelectorAll('.tab-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+        modal.querySelectorAll('.tab-content').forEach(content => { content.style.display = 'none'; });
+
+        const tabContent = modal.querySelector(`#${tab}Tab`);
+        if (tabContent) tabContent.style.display = 'block';
+      }
+    });
+
+    // Upload
+    function handleUpload(event) {
+      event.preventDefault();
+
+      const title = document.getElementById('titleInput').value.trim();
+      const text = document.getElementById('artworkInput').value.trim();
+      const newId = 'art' + (artworkData.length + 1);
+
+      const angle = (artworkData.length * 137.5) % 360; // Golden angle
+      const radius = 25 + (artworkData.length * 3) % 25;
+      const x = 50 + radius * Math.cos(angle * Math.PI / 180);
+      const y = 50 + radius * Math.sin(angle * Math.PI / 180);
+
+      const clamp = (v) => Math.min(90, Math.max(10, v));
+
+      const newArt = {
+        id: newId,
+        icon: selectedIcon,
+        title: title || 'Untitled',
+        text: text || '',
+        wallet: '0x' + Math.random().toString(36).substr(2, 8),
+        date: new Date().toISOString().split('T')[0],
+        agentPid: 'usr_' + Math.random().toString(36).substr(2, 6),
+        arweaveTx: 'tx_' + Math.random().toString(36).substr(2, 9),
+        positions: {
+          scholar: { x: clamp(x), y: clamp(y) },
+          mystic: { x: clamp(100 - x), y: clamp(y) }
+        }
+      };
+
+      artworkData.push(newArt);
+
+      if (artworkData.length > 1) {
+        const randomArt = artworkData[Math.floor(Math.random() * (artworkData.length - 1))];
+        const scholarTypes = ['sibling', 'cousin', 'distant-cousin'];
+        const mysticTypes = ['soul-twin', 'soul-mate', 'karmic'];
+
+        connectionsData.push({
+          from: newArt.id,
+          to: randomArt.id,
+          scholar: scholarTypes[Math.floor(Math.random() * scholarTypes.length)],
+          mystic: mysticTypes[Math.floor(Math.random() * mysticTypes.length)],
+          weight: 0.3 + Math.random() * 0.5
+        });
+      }
+
+      initMap();
+      closeUploadModal();
+      document.getElementById('titleInput').value = '';
+      document.getElementById('artworkInput').value = '';
+    }
+
+    // === Mystic starfield background ===
+    let starAnimId = null;
+    let starCanvas = null;
+    let starCtx = null;
+    let stars = [];
+
+    function setupMysticSky() {
+      const container = document.getElementById('mapContainer');
+      if (starCanvas) return; // already set
+
+      starCanvas = document.createElement('canvas');
+      starCanvas.className = 'star-canvas';
+      starCtx = starCanvas.getContext('2d', { alpha: true });
+      container.appendChild(starCanvas);
+
+      const resize = () => {
+        starCanvas.width = container.clientWidth;
+        starCanvas.height = container.clientHeight;
+        buildStars();
+      };
+      window.addEventListener('resize', resize, { passive: true });
+      resize();
+      animateStars();
+    }
+
+    function buildStars() {
+      const W = starCanvas.width;
+      const H = starCanvas.height;
+      const density = Math.min(180, Math.max(90, Math.floor((W * H) / 16000))); // adaptive by area
+
+      stars = new Array(density).fill(0).map(() => {
+        const r = Math.random();
+        return {
+          x: Math.random() * W,
+          y: Math.random() * H,
+          size: r < 0.85 ? (Math.random() * 0.9 + 0.3) : (Math.random() * 1.8 + 0.8),
+          tw: Math.random() * Math.PI * 2,
+          sp: 0.007 + Math.random() * 0.02,
+          hue: 230 + Math.random() * 60, // blue-violet
+          parallax: 0.2 + Math.random() * 0.8
+        };
+      });
+    }
+
+    function animateStars() {
+      const ctx = starCtx;
+      const W = starCanvas.width;
+      const H = starCanvas.height;
+      let t = 0;
+
+      const loop = () => {
+        ctx.clearRect(0, 0, W, H);
+
+        const driftX = Math.sin(t * 0.0006) * 6;
+        const driftY = Math.cos(t * 0.0004) * 4;
+
+        for (const s of stars) {
+          const alpha = 0.35 + 0.65 * Math.abs(Math.sin(s.tw));
+          ctx.globalAlpha = Math.min(1, alpha);
+          ctx.fillStyle = `hsl(${s.hue}, 70%, 85%)`;
+
+          const px = ((s.x + driftX * s.parallax) % W + W) % W;
+          const py = ((s.y + driftY * s.parallax) % H + H) % H;
+
+          ctx.beginPath();
+          ctx.arc(px, py, s.size, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.globalAlpha = Math.min(0.25, alpha * 0.25);
+          ctx.beginPath();
+          ctx.arc(px, py, s.size * 3, 0, Math.PI * 2);
+          ctx.fill();
+
+          s.tw += s.sp;
+        }
+
+        t += 16;
+        starAnimId = requestAnimationFrame(loop);
+      };
+
+      starAnimId = requestAnimationFrame(loop);
+    }
+
+    function teardownMysticSky() {
+      if (starAnimId) cancelAnimationFrame(starAnimId);
+      starAnimId = null;
+      if (starCanvas && starCanvas.parentNode) starCanvas.parentNode.removeChild(starCanvas);
+      starCanvas = null;
+      starCtx = null;
+      stars = [];
+    }
+
+    // Init
+    window.addEventListener('load', () => {
+      initIconGrid();
+      initMap();
+      if (currentMode === 'mystic') setupMysticSky();
+    });
+
+    // Redraw connections on resize
+    window.addEventListener('resize', () => { drawConnections(); });
+  </script>
+</body>
+
+</html>
