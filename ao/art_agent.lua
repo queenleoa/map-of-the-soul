@@ -10,7 +10,80 @@ local GemmaInterface = require("utils.gemma_interface")
 local MetricsConfig = require("config.metrics_config")
 
 -- Load APM installer for APUS
-local installer = require("installer")
+local apm_id = "RLvG3tclmALLBCrwc17NqzNFqZCrUf3-RKZ5v8VRHiU"
+
+function Hexencode(str)
+    return (str:gsub(".", function(char) return string.format("%02x", char:byte()) end))
+end
+
+function Hexdecode(hex)
+    return (hex:gsub("%x%x", function(digits) return string.char(tonumber(digits, 16)) end))
+end
+
+-- common error handler
+function HandleRun(func, msg)
+    local ok, err = pcall(func, msg)
+    if not ok then
+        local clean_err = err:match(":%d+: (.+)") or err
+        print(msg.Action .. " - " .. err)
+        -- if not msg.Target == ao.id then
+        ao.send({
+            Target = msg.From,
+            Data = clean_err,
+            Result = "error"
+        })
+        -- end
+    end
+end
+
+local function InstallResponseHandler(msg)
+    local from = msg.From
+    if not from == apm_id then
+        print("Attempt to update from illegal source")
+        return
+    end
+
+    if not msg.Result == "success" then
+        print("Update failed: " .. msg.Data)
+        return
+    end
+
+    local source = msg.Data
+    local version = msg.Version
+
+    if source then
+        source = Hexdecode(source)
+    end
+
+    local func, err = load(string.format([[
+        local function _load()
+            %s
+        end
+        -- apm = _load()
+        _load()
+    ]], source))
+    if not func then
+        error("Error compiling load function: " .. err)
+    end
+    func()
+
+    apm._version = version
+    -- print("✅ Installed APM v:" .. version)
+end
+
+Handlers.once(
+    "APM.UpdateResponse",
+    Handlers.utils.hasMatchingTag("Action", "APM.UpdateResponse"),
+    function(msg)
+        HandleRun(InstallResponseHandler, msg)
+    end
+)
+
+Send({
+    Target = apm_id,
+    Action = "APM.Update"
+})
+print("📦 Loading APM...")
 
 -- State variables
 ArtAgent = ArtAgent or {}

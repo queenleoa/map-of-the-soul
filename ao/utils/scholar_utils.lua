@@ -1,12 +1,12 @@
 -- scholar_utils.lua
 local json = require("json")
-local crypto = require("crypto.digest")
+local crypto = require(".crypto")
 
 local ScholarUtils = {}
 
 -- Generate a hash for text comparison
 function ScholarUtils.hashText(text)
-    return crypto.sha256(text).hex()
+    return crypto.digest.sha256(text).hex()
 end
 
 -- Create a fingerprint from analysis results

@@ -14,7 +14,6 @@
 -- Web UI for browsing & publishing packages: https://apm.betteridea.dev
 -- Built with ❤️ by BetterIDEa
 
-
 local apm_id = "RLvG3tclmALLBCrwc17NqzNFqZCrUf3-RKZ5v8VRHiU"
 
 function Hexencode(str)
