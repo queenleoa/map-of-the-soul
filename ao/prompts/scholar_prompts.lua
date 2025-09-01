@@ -23,10 +23,13 @@ Format as JSON.
 ]]
 
 ScholarPrompts.METRIC_EXTRACTION = [[
-Based on this literary analysis, extract specific metrics in JSON format.
+Based on this literary analysis and the original text, extract specific metrics in JSON format.
 
 Analysis:
 {ANALYSIS}
+
+Original Text:
+{TEXT}
 
 Extract and categorize:
 1. THEMES (top 3): identity, love, death, time, memory, power, freedom, isolation, transformation, loss, hope, nature, technology, spirituality, family, journey, etc.
