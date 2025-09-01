@@ -62,7 +62,7 @@ MetricsConfig.CATEGORIES = {
         "religious", "mythological", "technological", "medical", "architectural"
     },
     
-    rhetorical_devices = {
+    literary_devices = {
         "metaphor", "simile", "personification", "allegory", "symbolism",
         "irony", "paradox", "oxymoron", "hyperbole", "litotes", "metonymy",
         "synecdoche", "anaphora", "epistrophe", "chiasmus", "asyndeton",
@@ -84,9 +84,18 @@ MetricsConfig.THRESHOLDS = {
 -- Credit management
 MetricsConfig.CREDITS = {
     art_agent_free = 5,
-    art_agent_analysis = 2,  -- Uses 2 credits for self-analysis
-    art_agent_comparison = 1, -- Uses 1 credit per comparison
-    switch_to_llm_apus = 3   -- Switch to llm_apus after 3 credits used
+    art_agent_analysis = 2,
+    art_agent_metrics = 1,
+    switch_to_llm_apus = 3
+}
+
+-- Discovery limits
+MetricsConfig.DISCOVERY = {
+    max_relationships_with_sibling = 10,
+    max_relationships_without_sibling = 13,
+    max_agents_to_examine = 25,
+    initial_random_agents = 10,
+    network_share_limit = 5
 }
 
 return MetricsConfig
