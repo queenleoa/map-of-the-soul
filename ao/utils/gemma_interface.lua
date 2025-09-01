@@ -1,81 +1,47 @@
--- gemma_interface.lua
+-- utils/gemma_interface.lua
 local json = require("json")
+local ProcessConfig = require("config.process_config")
+
 local GemmaInterface = {}
 
--- Constants for Gemma configuration
-GemmaInterface.MAX_TOKENS = 32000
-GemmaInterface.DEFAULT_TEMPERATURE = 0.7
-GemmaInterface.DEFAULT_MAX_RESPONSE = 2048
+-- Process IDs
+GemmaInterface.LLM_APUS = ProcessConfig.PROCESSES.llm_apus
+GemmaInterface.MAX_CONTEXT = 32000
 
--- Build options for Gemma inference
-function GemmaInterface.buildOptions(custom_options)
-    local options = {
-        temperature = GemmaInterface.DEFAULT_TEMPERATURE,
-        max_tokens = GemmaInterface.DEFAULT_MAX_RESPONSE,
-        top_p = 0.9
-    }
-    
-    -- Merge custom options
-    if custom_options then
-        for k, v in pairs(custom_options) do
-            options[k] = v
-        end
+-- Build request for llm_apus process (after free credits exhausted)
+function GemmaInterface.buildLLMApusRequest(prompt, reference)
+    -- Simple truncation if needed
+    if string.len(prompt) > 100000 then
+        prompt = string.sub(prompt, 1, 100000) .. "\n... [truncated]"
     end
     
-    return json.encode(options)
-end
-
--- Create inference request for art agent's own credits
-function GemmaInterface.createInferRequest(prompt, session_id, reference)
     return {
-        prompt = prompt,
-        options = {
-            session = session_id,
-            temperature = 0.7,
-            max_tokens = 2048
-        },
-        reference = reference or ("infer-" .. os.time())
-    }
-end
-
--- Format request for llm_apus process (when out of credits)
-function GemmaInterface.createLLMApusRequest(prompt, reference)
-    return {
-        Target = "A5TeWstBP1mD3FiZoU9JrbFUQ9Xg-hBgxHT7oeEVMr0",
+        Target = GemmaInterface.LLM_APUS,
         Action = "Infer",
         ["X-Prompt"] = prompt,
-        ["X-Reference"] = reference or ("apus-" .. os.time()),
-        ["X-Options"] = GemmaInterface.buildOptions()
+        ["X-Reference"] = reference or ("llm-" .. os.time()),
+        ["X-Options"] = json.encode({
+            temperature = 0.7,
+            max_tokens = 2048,
+            top_p = 0.9
+        })
     }
 end
 
--- Check if response is within token limits
-function GemmaInterface.checkTokenLimit(text)
-    -- Rough estimate: 1 token ≈ 4 characters
-    local estimated_tokens = string.len(text) / 4
-    return estimated_tokens < GemmaInterface.MAX_TOKENS
-end
-
--- Truncate text if too long for context window
-function GemmaInterface.truncateForContext(text, max_chars)
-    max_chars = max_chars or 100000  -- ~25k tokens
-    if string.len(text) > max_chars then
-        return string.sub(text, 1, max_chars) .. "... [truncated]"
+-- Parse response from llm_apus
+function GemmaInterface.parseLLMApusResponse(msg)
+    if not msg or not msg.Data then
+        return nil
     end
-    return text
-end
-
--- Parse Gemma response
-function GemmaInterface.parseResponse(response)
-    if type(response) == "string" then
-        -- Try to extract structured data if present
-        local success, data = pcall(json.decode, response)
-        if success then
-            return data
-        end
-        return { text = response }
+    
+    -- Try to parse JSON response
+    local success, data = pcall(json.decode, msg.Data)
+    if success and data.result then
+        return data.result
     end
-    return response
+    
+    -- Return raw data if not JSON
+    return msg.Data
 end
 
 return GemmaInterface
