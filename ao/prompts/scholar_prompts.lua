@@ -60,19 +60,4 @@ Format response as JSON:
 {"type": "sibling", "score": 75, "justification": "", "similarity": "", "contrasts": "" }
 ]]
 
-ScholarPrompts.BATCH_COMPARISON = [[
-Analyze these artwork pairs for literary kinship. Look beyond surface differences.
-
-{PAIRS}
-
-For each pair, determine:
-- Relationship: VERSION (>90% similar), SIBLING (same soul/voice), COUSIN (kinship with distinct voices), DISTANT_COUSIN (subtle resonances), or NONE
-- Score: 0-100
-3. Justification: What binds them (or doesn't) - be specific about shared elements (2-3 sentences)
-4. Similarities and Contrasts: be specific and keep an eye out for special subtle insights that might get missed by readers. (2-3 sentences)
-
-Format as JSON array:
-[{"pair": 1, "type": "sibling", "score": 75, "justification": "", "similarity": "", "contrasts": ""}, ...]
-]]
-
 return ScholarPrompts

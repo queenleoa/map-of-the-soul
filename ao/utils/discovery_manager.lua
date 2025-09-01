@@ -1,116 +1,103 @@
--- discovery_manager.lua
+-- utils/discovery_manager.lua
+local MetricsConfig = require("config.metrics_config")
+
 local DiscoveryManager = {}
 
--- Create new discovery manager instance
 function DiscoveryManager.new(agent_id)
     local self = {
         agent_id = agent_id,
         examined_agents = {},
-        found_relationships = {},
-        total_examined = 0,
-        art_agent_credits_used = 0,
-        llm_apus_calls = 0
+        relationships = {},
+        credits_used = 0,
+        llm_apus_calls = 0,
+        discovery_complete = false
     }
     
     setmetatable(self, {__index = DiscoveryManager})
     return self
 end
 
--- Check if we should stop discovery
 function DiscoveryManager:shouldStop()
+    -- Check sibling condition
     local sibling_count = 0
-    for _, rel in ipairs(self.found_relationships) do
+    for _, rel in ipairs(self.relationships) do
         if rel.type == "sibling" then
             sibling_count = sibling_count + 1
         end
     end
     
-    -- Stop at 10 relationships if at least 1 sibling found
-    if sibling_count > 0 and #self.found_relationships >= 10 then
+    if sibling_count > 0 and #self.relationships >= MetricsConfig.DISCOVERY.max_relationships_with_sibling then
         return true
     end
     
-    -- Stop at 13 relationships if no siblings found
-    if sibling_count == 0 and #self.found_relationships >= 13 then
+    if #self.relationships >= MetricsConfig.DISCOVERY.max_relationships_without_sibling then
         return true
     end
     
-    -- Stop if examined 30 agents
-    if self.total_examined >= 30 then
+    local examined_count = 0
+    for _ in pairs(self.examined_agents) do
+        examined_count = examined_count + 1
+    end
+    
+    if examined_count >= MetricsConfig.DISCOVERY.max_agents_to_examine then
         return true
     end
     
     return false
 end
 
--- Add discovered relationship
-function DiscoveryManager:addRelationship(rel)
-    if rel.type ~= "none" and rel.type ~= nil then
-        table.insert(self.found_relationships, {
-            peer_id = rel.peer_id,
-            type = rel.type,
-            score = rel.score,
-            justification = rel.justification,
-            discovered_at = os.time()
-        })
-    end
-end
-
--- Mark agent as examined
 function DiscoveryManager:markExamined(agent_id)
     self.examined_agents[agent_id] = true
-    self.total_examined = self.total_examined + 1
 end
 
--- Check if agent already examined
 function DiscoveryManager:isExamined(agent_id)
     return self.examined_agents[agent_id] == true
 end
 
--- Get agents to explore next (network expansion)
-function DiscoveryManager:getNextCandidates(current_relatives)
+function DiscoveryManager:addRelationship(rel)
+    if rel.type ~= "none" then
+        table.insert(self.relationships, rel)
+    end
+end
+
+function DiscoveryManager:useCredit()
+    self.credits_used = self.credits_used + 1
+end
+
+function DiscoveryManager:useLLMApus()
+    self.llm_apus_calls = self.llm_apus_calls + 1
+end
+
+function DiscoveryManager:getNextCandidates()
     local candidates = {}
     
-    for _, relative in ipairs(current_relatives) do
-        if (relative.type == "sibling" or relative.type == "cousin") 
-           and not self:isExamined(relative.peer_id) then
-            table.insert(candidates, relative.peer_id)
+    -- Prioritize siblings and cousins for network exploration
+    for _, rel in ipairs(self.relationships) do
+        if (rel.type == "sibling" or rel.type == "cousin") and 
+           not self:isExamined(rel.peer_id) then
+            table.insert(candidates, rel.peer_id)
         end
     end
     
     return candidates
 end
 
--- Determine if should use llm_apus process
-function DiscoveryManager:shouldUseLLMApus()
-    -- Use llm_apus if art agent has used 3+ credits
-    return self.art_agent_credits_used >= 3
-end
-
--- Track credit usage
-function DiscoveryManager:useArtAgentCredit()
-    self.art_agent_credits_used = self.art_agent_credits_used + 1
-    return self.art_agent_credits_used
-end
-
--- Track llm_apus usage
-function DiscoveryManager:useLLMApus()
-    self.llm_apus_calls = self.llm_apus_calls + 1
-    return self.llm_apus_calls
-end
-
--- Get discovery summary
 function DiscoveryManager:getSummary()
     local relationship_counts = {}
-    for _, rel in ipairs(self.found_relationships) do
+    for _, rel in ipairs(self.relationships) do
         relationship_counts[rel.type] = (relationship_counts[rel.type] or 0) + 1
     end
     
+    local examined_count = 0
+    for _ in pairs(self.examined_agents) do
+        examined_count = examined_count + 1
+    end
+    
     return {
-        total_examined = self.total_examined,
-        total_relationships = #self.found_relationships,
+        total_examined = examined_count,
+        total_relationships = #self.relationships,
         relationship_breakdown = relationship_counts,
-        art_agent_credits = self.art_agent_credits_used,
+        credits_used = self.credits_used,
         llm_apus_calls = self.llm_apus_calls
     }
 end

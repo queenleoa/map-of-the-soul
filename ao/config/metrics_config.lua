@@ -91,8 +91,8 @@ MetricsConfig.CREDITS = {
 
 -- Discovery limits
 MetricsConfig.DISCOVERY = {
-    max_relationships_with_sibling = 10,
-    max_relationships_without_sibling = 13,
+    max_relationships_with_sibling = 7,
+    max_relationships_without_sibling = 10,
     max_agents_to_examine = 25,
     initial_random_agents = 10,
     network_share_limit = 5
