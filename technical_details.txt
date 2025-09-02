@@ -1,0 +1,203 @@
+1. Abstract
+
+Map of the Soul is a multi-agent system built on AO, Arweave, and APUS that demonstrates a new paradigm for internet-scale knowledge organization: literary artworks as autonomous actors. Instead of being passively categorized by external taxonomies, each artwork spawns its own Art Agent process. That agent performs verifiable AI self-analysis, communicates completely peer-to-peer with other artworks, and gradually builds a living, evolving map of human creativity.
+
+The project exemplifies a broader vision: an internet of intelligent, autonomously self-organizing data. By combining Arweave’s permanence, AO’s actor-oriented compute fabric, and APUS’s verifiable inference service, the system shows how content itself can take agency in defining its relationships.
+
+In this hackathon prototype, we implement the Scholar Map, where agents analyze literary style, themes, unique hidden details, and affect to determine kinship relations (duplicate, version, sibling, cousin, distant cousin). The Mystic Map focuses more on categorizing the creator’s lens—clustering based on authorial voice, creator personality archetype, and purpose of the artwork in the larger human collective narrative—is planned as the next stage. Together, these maps form a double helix of interpretation: one focused on text as artifact, the other on soul as voice.
+
+
+
+
+
+2. Project Description
+
+The Problem with Centralized Content Analysis
+
+Today’s content discovery systems rely on:
+
+* Static taxonomies such as genre tags and categories that flatten nuance.
+* Centralized curation prone to bias, bottlenecks, and censorship.
+* Keyword-driven similarity that misses metaphorical thematic or emotional resonance.
+* Passive objects where the creators and their artworks have no say in how they are interpreted.
+
+Creative works especially resist rigid categories. Existing infrastructures lack the flexibility and autonomy to capture these organic and complex dynamics.
+
+Each artwork uploaded to Arweave becomes an autonomous AO agent with the capacity to:
+
+1. Self-interpret using verifiable AI inference.
+2. Seek kinship by talking directly to peers.
+3. Record relationships permanently on Arweave.
+4. Continuously evolve the map as new works join.
+
+This creates a creative democracy: artworks themselves decide their family, without external curators dictating their lineage. The result is an emergent, peer-organized network of meaning.
+
+
+
+
+
+3. Architecture
+
+The system’s architecture fuses AO’s actor-oriented design, Arweave permanence, and APUS inference.
+
+Components:
+
+* Frontend UI: Upload text art and view the evolving map.
+* Arweave: Stores artwork text and analysis attestations.
+* Art Agent: AO process embodying each artwork. Performs self-analysis, peer discovery, and relationship inference.
+* APUS AI: Provides verifiable inference calls for close reading and similarity scoring.
+* Coordinator Agent: Maintains the global registry of agents and the aggregated map. Responds to frontend queries. More coordinator processes can be added as the map scales.
+
+Lifecycle of an Artwork:
+
+1. User uploads text, stored on Arweave, spawning an Art Agent.
+2. Self-analysis via APUS produces interpretive metrics.
+3. Registration with the Coordinator.
+4. Peer discovery: the agent queries and wakes up ten random peers, then recursively explores kinship.
+5. Relationship inference: decides edge type (duplicate, version, sibling, cousin, distant cousin).
+6. Map update: edges recorded with the Coordinator; attestations written to Arweave.
+7. Frontend rendering: user sees the living map.
+
+
+
+
+
+3. Linguistic Algorithms
+
+The Scholar Map relies on multi-pass language model prompting, feature extraction, and structured relationship inference.
+
+Self-Analysis (Qualitative):
+A close-reading prompt calibrated for literary analysis runs to analyse:
+
+1. Emotional tone and themes.
+2. Stylistic lineage and canonical position.
+3. Hidden insights and overlooked details.
+
+Metric Extraction (Quantitative):
+A structured prompt converts narrative analysis and the original text into JSON metrics:
+
+* Top three themes from curated taxonomy.
+* Top three emotions from a Plutchik-like set.
+* Form classification such as poetry or prose.
+* Register quadrant measuring formality and abstractness.
+* Narrative voice classification.
+* Imagery domains such as nature, cosmic, domestic.
+* Literary devices.
+* Complexity metrics covering syntax, lexicon, and figurative density.
+
+Fingerprinting:
+Each artwork is distilled into a hybrid fingerprint including:
+
+* Text hash for duplicate detection.
+* Normalized vectors of themes, emotions, imagery, devices.
+* A surrogate excerpt embedding to bias retrieval.
+
+Relationship Inference: The metrics are used to establish a baseline similarity to call the AI inference service. Note that metrics are not used for the classification of relationships.
+Pairwise comparisons are made via APUS:
+
+- Scores from zero to one hundred with justification in plain English.
+
+- Thresholds: duplicate equals 100, version greater or equal to 90, sibling greater or equal to 70, cousin greater or equal to 50, distant cousin greater or equal to 30.
+
+- Hash equality confirms duplicates instantly without inference cost.
+
+- The inferences can further be used to improve, train, and normalise categorisation
+
+
+
+
+
+4. Technical Advantages of Peer-to-Peer Sorting
+
+Traditional centralized clustering cannot match the qualitative richness of emergent peer-to-peer discovery. Our design provides:
+
+* Emergent kinship: for example, a haiku on grief finds a cousin in a prose monologue on mourning.
+* Decentralized discovery: relationships form via mutual recognition, not imposed labels.
+* Interpretive persistence: each agent’s self-analysis becomes part of its permanent state.
+* Justified edges: language model responses include reasoning, not just scores.
+* Non-hierarchical webs: dense kinship clusters emerge naturally.
+* On-chain provenance: relationships and analyses are permanently auditable.
+* Dynamic evolution: the network reshapes itself as new works join or the algorithm updates.
+
+
+
+
+
+5. Utility and Value
+
+* Can be used by NFT marketplaces, social media platforms, serious art curators and collectors, and even ordinary websites to enhance user inspiration and content discovery.
+* Can be used as data sets to train LLMs
+* Can be used by Arweave as their universal data-organisation protocol.
+
+ 
+
+
+
+6. Demo Limitations
+
+Being candid about prototype limitations:
+
+* Scholar Map only, Mystic Map not yet implemented.
+* Scale tuned for 50 to 100 texts, visualization algorithm not production-grade.
+* APUS stability: installation, credit, and lag issues mean some inferences routed through a central helper process or even a fallback categorization.
+* Threshold enforcement: current code may accept weak edges. The algorithm needs more tuning and training.
+* Metadata completeness: Coordinator registry needs consistent title and icon inclusion for the visualisation. Ideally, any data on pre-existing arweave should be able spawn an agent without this metadata requirement.
+
+
+
+
+
+7. Scaling Ideas
+
+Discovery and Graph Growth:
+
+* Locality-sensitive hashing or MinHash to prune candidates.
+* Gossip or DHT routing for efficient peer lookup.
+* Reconciliation passes for bidirectional confirmation of edges.
+
+Coordinator Sharding:
+
+* Multiple Coordinators managing map shards by thematic prefix.
+* Periodic merging into global snapshots.
+* Read replicas serving map views via Arweave pointers.
+
+Inference Efficiency:
+
+* Aggressive batching and caching of comparison prompts.
+* Reuse of justifications across agents.
+
+Graph Layout:
+
+* Advanced force-directed or spectral embedding algorithms.
+* Confidence-weighted visualization styles.
+
+APIs and Integrations:
+
+* GraphQL indexes over Arweave transactions for fast queries.
+* Write-intent channels for marketplaces such as “is this a version of X”.
+
+Resilience:
+
+* Conflict-free replicated data type merges for relationship claims.
+* Optional human moderation hooks to contest or validate edges.
+
+
+8. The Importance of Verifiable AI in Art Mapping
+
+APUS Network’s verifiable AI inference is crucial to Map of the Soul’s vision of autonomous art agents. When an artwork’s AI analysis history becomes part of its permanent identity on Arweave, the verifiability of that analysis is paramount. Without proof that the AI interpretation was generated correctly, the entire trust model collapses.
+
+In traditional content analysis, interpretations are generated by a centralized authority and can always be updated, corrected, or disputed. But in our system - where each artwork’s agent makes decisions about relationships independently, and where those relationships influence how future artworks position themselves - every inference must be auditable and reproducible. APUS ensures that the “soul” each artwork discovers for itself isn’t just an arbitrary output but a verifiable computation that anyone can check and challenge.
+
+This verifiability turns AI analysis from a black-box oracle into a transparent lens through which artworks perceive one another, opening up a bigger vision where all data is inherently intelligent and capable of self-organizing.
+
+Every spawned art agent first performs a self-analysis (using APUS). A second analysis is then run on the artwork and its AI output to extract metrics. After that, the art agent reaches out to possible peers to perform a relationship analysis (again using APUS). Due to credit and efficiency constraints, the current demo redirects those relationship-analysis requests to a common funded process, but ideally, each artwork should be able to participate in relationship analysis directly and agree on the outcome.
+
+
+9. Conclusion
+
+Map of the Soul shows how data itself can gain agency. In our prototype, artworks act as living entities: analyzing themselves, finding their kin, and mapping relationships into permanence. The project is not just an experiment in literary mapping—it is a proof-of-concept for a new internet: one where information self-organizes into meaning networks, without centralized control.
+
+By uniting AO’s actor model, Arweave’s permanence, and APUS’s verifiable inference, we lay the groundwork for a decentralized semantic layer: a universal, living database where content is both the data and the actor.
+
+This vision has applications far beyond literature—into science, culture, archives, marketplaces, and social platforms. It is a step towards an autonomous permaweb, where meaning emerges from peer-to-peer conversations between data-agents, building a true “map of the soul” of human creativity.
+

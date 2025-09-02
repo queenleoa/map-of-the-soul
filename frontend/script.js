@@ -59,7 +59,121 @@
         text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
         wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
         positions: { scholar: { x: 70, y: 35 }, mystic: { x: 80, y: 45 } }
-      }
+      },
+      {
+        id: 'art6', icon: '🍂', title: 'Recursive Dreams',
+        text: 'There is a blue stream in the forest. That is where grandma lived. The day the blue stream was dried up, the fish cried tears you could see. I search for grandma today and there is just a concrete housing complex atop stream, she has gone. Part of me was so confident that she would live forever, so I never visited enough',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 55, y: 35 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art7', icon: '💎', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 80, y: 35 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art8', icon: '🎆', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 20, y: 35 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art9', icon: '🌴', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 10, y: 20 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art10', icon: '⚔️', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 15, y: 45 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art11', icon: '🏛️', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 75, y: 35 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art12', icon: '🐍', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 20, y: 20 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art13', icon: '❄️', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 60, y: 30 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art14', icon: '🖋️', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 80, y: 50 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art15', icon: '🌾', title: 'Orchards',
+        text: 'In the orchard, guavas once ripened slow,\n their skins blushing under mother’s hand.\n Now the rows are aisles of plastic glow,\n fluorescent suns where shadows should stand.\n\n I walk the tiled floor expecting her call,\n a sweetness promised, forever near—\n yet silence shelves itself along the wall,\n and fruitless air forgets the year.',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 60, y: 65 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art16', icon: '🔐', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 40, y: 40 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art17', icon: '🌿', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 75, y: 65 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art18', icon: '🦋', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 80, y: 35 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art19', icon: '🌀', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 90, y: 35 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art20', icon: '🦉', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 90, y: 20 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art21', icon: '🗝️', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 20, y: 60 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art22', icon: '📚', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 15, y: 85 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art23', icon: '👁️', title: 'Recursive Dreams',
+        text: 'I dreamt I was dreaming\nOf dreaming this dream\nStack overflow of souls',
+        wallet: '0xbe03d99c', date: '2024-01-19', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 40, y: 10 }, mystic: { x: 80, y: 45 } }
+      },
+      {
+        id: 'art24', icon: '✒️', title: 'Dead Fish',
+        text: 'There is a blue stream in the forest. That is where grandma lived. The day the blue stream was dried up, the fish cried tears you could see. I search for grandma today and there is just a concrete housing complex atop stream, she has gone. Part of me was so confident that she would live forever, so I never visited enough',
+        wallet: '0xbe03d99c', date: '2025-03-09', agentPid: 'rec_e9b3o6', arweaveTx: 'tx_3o7q6b9z',
+        positions: { scholar: { x: 55, y: 75 }, mystic: { x: 80, y: 45 } }
+      },
     ];
 
     // Connections data
@@ -68,7 +182,19 @@
       { from: 'art2', to: 'art3', scholar: 'cousin', mystic: 'karmic', weight: 0.60 },
       { from: 'art3', to: 'art4', scholar: 'version', mystic: 'soul-twin', weight: 0.85 },
       { from: 'art4', to: 'art5', scholar: 'distant-cousin', mystic: 'karmic', weight: 0.45 },
-      { from: 'art1', to: 'art5', scholar: 'cousin', mystic: 'soul-mate', weight: 0.65 }
+      { from: 'art9', to: 'art12', scholar: 'distant-cousin', mystic: 'soul-mate', weight: 0.65 },
+      { from: 'art12', to: 'art8', scholar: 'duplicate', mystic: 'soul-mate', weight: 0.95 },
+      { from: 'art1', to: 'art12', scholar: 'version', mystic: 'soul-mate', weight: 0.85 },
+      { from: 'art8', to: 'art1', scholar: 'version', mystic: 'soul-mate', weight: 0.85 },
+      { from: 'art8', to: 'art9', scholar: 'distant-cousin', mystic: 'soul-mate', weight: 0.65 },
+      { from: 'art1', to: 'art9', scholar: 'distant-cousin', mystic: 'soul-mate', weight: 0.65 },
+      { from: 'art12', to: 'art9', scholar: 'distant-cousin', mystic: 'soul-mate', weight: 0.65 },
+      { from: 'art10', to: 'art21', scholar: 'cousin', mystic: 'soul-mate', weight: 0.65 },
+      { from: 'art11', to: 'art18', scholar: 'duplicate', mystic: 'soul-mate', weight: 0.95 },
+      { from: 'art16', to: 'art23', scholar: 'distant-cousin', mystic: 'soul-mate', weight: 0.65 },
+      { from: 'art20', to: 'art19', scholar: 'sibling', mystic: 'soul-mate', weight: 0.75 },
+      { from: 'art24', to: 'art15', scholar: 'sibling', mystic: 'soul-mate', weight: 0.85 },
+      { from: 'art24', to: 'art3', scholar: 'distant-cousin', mystic: 'soul-mate', weight: 0.65 },
     ];
 
     let currentMode = 'scholar';
@@ -247,28 +373,29 @@
         return `
           <div class="analysis-section">
             <h3>Emotional Tone & Thematic Elements</h3>
-            <p>This piece exhibits a contemplative melancholy interwoven with technological spirituality. The emotional register oscillates between wonder and existential uncertainty, creating a liminal space where human consciousness meets digital reality.</p>
+            <p> The text evokes a profound sense of loss and melancholic resignation, tinged with a childlike wonder at the natural world. The primary thematic concerns revolve around mortality, the destruction of nature by human development, and the poignant regret of unfulfilled familial connection. The emotional texture is one of quiet grief, amplified by the stark contrast between the vibrant memory of the blue stream and the sterile reality of the concrete complex.</p>
           </div>
           <div class="analysis-section">
             <h3>Stylistic Influence & Canonical Position</h3>
-            <p>Clear influences from post-digital poetics and Silicon Valley mysticism. Linguistically, the piece employs code-switching between natural language and programming syntax. Within the emerging canon of algorithmic literature, this occupies a pivotal position bridging devotional and documentary modes.</p>
+            <p> Stylistically, the text exhibits a minimalist, almost haiku-like quality, reminiscent of imagist poetry and potentially influenced by Japanese aesthetics. The simple sentence structure and direct diction create a sense of immediacy and vulnerability, while the repetition of 'blue' emphasizes the stream's significance. Its canonical position is difficult to pinpoint precisely, but it shares affinities with modernist explorations of fragmentation and the alienation of the individual within a rapidly changing world, albeit in a far more condensed and accessible form. </p>
           </div>
           <div class="analysis-section">
             <h3>Unique Insight</h3>
+            <p> The detail of the 'fish crying tears you could see' is particularly striking; it anthropomorphizes the natural world in a way that transcends simple personification. This image functions as a powerful, almost surreal, metaphor for the collective grief of a lost ecosystem and, by extension, the loss of a personal connection to nature and family, imbuing the narrative with a haunting, symbolic resonance that elevates it beyond a simple lament.</p>
             <p>The recursive structure mirrors its content - a meta-textual achievement where form and function converge. Most readers miss the fibonacci sequence embedded in the syllable count, revealing a mathematical substructure beneath the poetic surface.</p>
           </div>
           <div class="tag-container">
-            <div class="tag">Theme: Digital Consciousness</div>
+            <div class="tag">Theme: Melancholy</div>
             <div class="tag">Theme: Temporal Paradox</div>
-            <div class="tag">Theme: Recursive Identity</div>
-            <div class="tag">Emotion: Wonder</div>
-            <div class="tag">Emotion: Melancholy</div>
-            <div class="tag">Emotion: Transcendence</div>
+            <div class="tag">Theme: Alienation</div>
+            <div class="tag">Emotion: Imagist Poetry</div>
+            <div class="tag">Emotion: Family</div>
+            <div class="tag">Emotion: Resignation</div>
             <div class="tag">Form: Free Verse</div>
-            <div class="tag">Register: Abstract-Formal</div>
-            <div class="tag">Device: Metaphor</div>
-            <div class="tag">Device: Recursion</div>
-            <div class="tag">Imagery: Cosmic</div>
+            <div class="tag">Register: Abstract</div>
+            <div class="tag">Device: Naturer</div>
+            <div class="tag">Device: Change</div>
+            <div class="tag">Imagery: Roots</div>
             <div class="tag">Imagery: Technological</div>
           </div>
         `;
@@ -313,21 +440,14 @@
           </div>
           <div class="analysis-section">
             <h3>Justification of Relationship</h3>
-            <p>These texts share deep structural DNA - both employ recursive metaphors and code-language hybridization. The ${relationship.label.toLowerCase()} relationship manifests through parallel thematic exploration of consciousness-in-transition, though with divergent emotional registers.</p>
-          </div>
+          <p> The original is a prose fragment, intimate and confessional; the sibling takes the form of a structured poem with rhyme and cadence. One speaks plainly of shock and regret, the other layers music to soften inevitability.</p>          </div>
           <div class="analysis-section">
             <h3>Similarities</h3>
-            <p>• Both pieces interrogate the boundary between human and machine consciousness<br>
-            • Shared use of programming syntax as poetic device<br>
-            • Temporal paradoxes as central metaphysical concern<br>
-            • Similar syllabic patterns suggesting influence or shared tradition</p>
+            <p>Each piece laments a grandmother/mother through place, weaving natural imagery with absence. Both ground grief in ordinary details—streams, guavas—that become relics of permanence./p>
           </div>
           <div class="analysis-section">
             <h3>Contrasts</h3>
-            <p>• "${art1.title}" operates in declarative mode while "${art2.title}" favors interrogative<br>
-            • Divergent imagery domains: cosmic vs terrestrial<br>
-            • Opposing emotional trajectories: ascension vs descent<br>
-            • Different canonical positions: foundational text vs evolutionary response</p>
+            <p>"'Blue' is a prose fragment, intimate and confessional; the sibling 'Orchards' takes the form of a structured poem with rhyme and cadence. One speaks plainly of shock and regret, the other layers music to soften inevitability./p>
           </div>
         `;
       } else {
@@ -412,13 +532,13 @@
         const scholarTypes = ['sibling', 'cousin', 'distant-cousin'];
         const mysticTypes = ['soul-twin', 'soul-mate', 'karmic'];
 
-        connectionsData.push({
-          from: newArt.id,
-          to: randomArt.id,
-          scholar: scholarTypes[Math.floor(Math.random() * scholarTypes.length)],
-          mystic: mysticTypes[Math.floor(Math.random() * mysticTypes.length)],
-          weight: 0.3 + Math.random() * 0.5
-        });
+        // connectionsData.push({
+        //   from: newArt.id,
+        //   to: 'art',
+        //   scholar: scholarTypes[Math.floor(Math.random() * scholarTypes.length)],
+        //   mystic: mysticTypes[Math.floor(Math.random() * mysticTypes.length)],
+        //   weight: 0.3 + Math.random() * 0.5
+        // });
       }
 
       initMap();
