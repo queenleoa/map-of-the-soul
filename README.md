@@ -6,17 +6,17 @@ Autonomous Art Agents Creating Self-Organizing Literary Networks on AO
 
 ### 🎨 Overview
 
-Map of the Soul is a revolutionary multi-agent system that transforms how we understand relationships between creative works. When text artwork is uploaded to Arweave, it spawns an autonomous AI agent that analyzes itself, discovers its literary family through peer-to-peer communication, and contributes to an ever-evolving map of creative connections.
+Map of the Soul is a revolutionary multi-agent system that transforms how we understand relationships between creative works. When text artwork is uploaded to Arweave, it spawns an autonomous AI agent that analyzes itself, discovers its literary family through peer-to-peer communication, and contributes to an ever-evolving map of creative connections. **The project demonstrates a step towards the big-vision of creating a new internet with intelligent and autonomously self-organising data.** 
 
-Unlike traditional content analysis that relies on centralized categorization, Map of the Soul allows artworks to self-organize into organic networks of meaning, creating what we call a "literary democracy" where each piece actively participates in defining its place in the cultural landscape.
+Unlike traditional content analysis that relies on centralized categorization, Map of the Soul allows artworks to self-organize into organic networks of meaning, creating what we could call a "creative democracy" where each piece actively participates in defining its place in the cultural landscape. 
 
 ### 🌟 Key Features
 
--   **Autonomous Art Agents**: Each artwork spawns its own AO process with AI capabilities
--   **Peer-to-Peer Discovery**: Agents find relationships without centralized sorting
+-   **Autonomous Art Agents**: Each artwork uploaded to arweave spawns its own AO process with AI capabilities
+-   **Peer-to-Peer Discovery**: Agents find relationships without centralized sorting. 
 -   **Dual Mapping Modes**:
-    -   **Scholar Map**: Analyzes content, themes, and literary techniques
-    -   **Mystic Map**: Explores the author's voice, soul essence, and purpose (coming soon)
+    -   **Scholar Map**: mapping based on content: Analyzes content, themes, and literary techniques
+    -   **Mystic Map**: mapping based on creator persona: Explores the author's voice, soul essence, and purpose (coming soon)
 -   **Verifiable AI Analysis**: Using APUS Network's on-chain inference
 -   **Permanent Storage**: All artworks and relationships stored on Arweave
 -   **Interactive Visualization**: Clickable relationship lines with detailed comparisons
@@ -24,37 +24,98 @@ Unlike traditional content analysis that relies on centralized categorization, M
 
 ### 🏗️ Architecture
 
-```
-┌─────────────────┐
-│   Frontend UI   │
-└────────┬────────┘
-         │
-┌────────▼────────┐
-│  Coordinator    │◄──── Holds complete map
-│     Agent       │      Manages positions
-└────────┬────────┘      Stores relationships
-         │
-    ┌────▼────┐
-    │  Art    │ ◄──── Self-analyzes content
-    │ Agent 1 │ ◄──── Discovers peers P2P
-    └────┬────┘       Stores on Arweave
-         │
-    P2P Communication
-         │
-    ┌────▼────┐
-    │  Art    │
-    │ Agent N │
-    └─────────┘
+┌───────────────────────┐
+│      Frontend UI      │
+│  (user action + view) │
+└───────────┬───────────┘
+            │
+            │ 1) Upload text → Arweave (gets txid)
+            │
+            ▼
+┌───────────────────────┐
+│     Arweave (L1)      │
+│  stores artwork txid  │
+└───────────┬───────────┘
+            │
+            │ 2) Frontend spawns Art Agent with {txid}
+            ▼
+┌───────────────────────┐
+│      Art Agent        │
+│  (for that Arweave    │
+│        txid)          │
+└───┬───────────────────┘
+    │
+    │ 3) Self-Analysis (verifiable)
+    │
+    │    ┌───────────────────────┐
+    └───▶│       APUS AI         │
+         │   verifiable infer    │
+         └───────────────────────┘
+
+    4) Register with Coordinator  ───────────────────────────────┐
+    (after self-analysis)                                         │
+    and request 10 random peers                                   │
+                                                                  ▼
+                       ┌───────────────────────────┐
+                       │   Coordinator Agent       │
+                       │ - holds full map +        │
+                       │   agent registry          │
+                       │ - returns random peers    │
+                       │ - serves map to frontend  │
+                       └───────────┬───────────────┘
+                                   │
+                     5) returns 10 random peers
+                                   │
+                                   ▼
+        ┌───────────────────────────────────────────────────────────┐
+        │                  P2P Relationship Phase                   │
+        │                                                           │
+        │  Art Agent ──talks directly to──► Peer Agents (10 seeds)  │
+        │     │                          ◄──talk back────────────── │
+        │     │                                                     │
+        │     ├─ analyze pairwise via APUS                          │
+        │     ├─ decide edge type (duplicate/version/sibling/       │
+        │     │                 cousin/distant cousin)              │
+        │     └─ expand search via peers’ siblings/cousins          │
+        └───────────────────────────────────────────────────────────┘
+
+    6) After each edge decision:
+       ├─ (optional) persist attestation → Arweave
+       └─ notify Coordinator with new edge
+
+            ┌───────────────────────┐
+            │     Arweave (L1)      │◄─── edge/analysis attestation (opt.)
+            └───────────────────────┘
+
+                       ┌───────────────────────────┐
+                       │   Coordinator Agent       │
+                       │ - updates global graph    │
+                       │ - maintains registry      │
+                       └───────────┬───────────────┘
+                                   │
+                                   │ 7) “Request Map”
+                                   │    (from Frontend)
+                                   ▼
+┌───────────────────────┐  ◄───────┘
+│      Frontend UI      │
+│  render Map of Soul   │
+└───────────────────────┘
+
 
 ```
 
 ### 🚀 Quick Start
 
-1.  **Deploy the Coordinator**
+1.  **Deploy the Coordinator and art agent**
 
 ```
 aos coordinator
 .load coordinator.lua
+
+```
+```
+aos art_agent_yourart
+.load art_agent.lua
 
 ```
 
@@ -91,6 +152,8 @@ map-of-the-soul/
 │       └── arweave_storage.lua    # Permanent storage
 ├── frontend/
 │   └── index.html             # Interactive map visualization
+|   ├── styles.css 
+|   └── script.js    
 └── README.md
 
 ```
@@ -98,7 +161,7 @@ map-of-the-soul/
 ### 🎯 How It Works
 
 1.  **Artwork Upload**: Text is stored on Arweave, spawning an art agent
-2.  **Self-Analysis**: Agent uses AI to analyze emotional tone, themes, style
+2.  **Self-Analysis**: Agent uses AI to analyze emotional tone, themes, style etc.
 3.  **Peer Discovery**: Agent communicates P2P to find related artworks
 4.  **Relationship Formation**: AI determines relationship type (sibling, cousin, etc.)
 5.  **Map Update**: Coordinator updates the visual map
@@ -109,7 +172,7 @@ map-of-the-soul/
 -   **Analysis Categories**:
     -   Emotional tone and thematic elements
     -   Stylistic influence and canonical position
-    -   Hidden insights and overlooked details
+    -   Hidden insights and overlooked details that make an artpiece undeniably unique
 -   **Relationship Types**:
     -   Duplicate (100% match)
     -   Version (90%+ similar)
@@ -120,17 +183,17 @@ map-of-the-soul/
 ### 🌙 Mystic Map (Coming Soon)
 
 -   **Analysis Categories**:
-    -   Zodiac archetype of writer's voice
-    -   Soul signature and essence
-    -   Mythos and impact on humanity
+    -   Zodiac archetype of writer's voice and perspective
+    -   Soul signature and essence of the author
+    -   Mythos and impact of the narrative perspective on humanity
 -   **Relationship Types**:
-    -   Soul Twin (deep resonance)
-    -   Soul Mate (complementary essences)
-    -   Karmic (polarized opposites)
+    -   Soul Twin (deep resonance in soul signature and mythos)
+    -   Soul Mate (similar soul essences or mythos)
+    -   Karmic (polarized opposites: similar themes/voices, opposite perspectives)
 
 ### 💡 Use Cases
 
--   **Digital Libraries**: Self-organizing collections
+-   **Digital Libraries**: Self-organizing collections (also helpful for training llms)
 -   **NFT Marketplaces**: Trace provenance of ideas
 -   **Social Platforms**: Enhanced content discovery
 -   **Creative Communities**: Find artistic kindred spirits
@@ -142,7 +205,7 @@ map-of-the-soul/
 -   **Arweave**: Permanent storage
 -   **APUS Network**: Verifiable AI inference
 -   **Lua**: Agent logic
--   **JavaScript**: Frontend visualization
+-   **HTML/CSS/JavaScript**: Frontend visualization
 
 ### 📊 Hackathon Category
 
