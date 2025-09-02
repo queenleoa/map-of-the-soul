@@ -13,24 +13,23 @@ Coordinator.stats = {
     versions = 0,
     siblings = 0,
     cousins = 0,
-    distant_cousins = 0
+    distant_cousins = 0,
+    discoveries_complete = 0
 }
 
 -- Calculate position using force-directed layout
 function Coordinator.calculatePosition(agent_id)
-    local agent = Coordinator.agents[agent_id]
-    if not agent then return {x = 50, y = 50} end
-    
     -- First agent at center
     if Coordinator.stats.total_agents == 1 then
+        Coordinator.map_positions[agent_id] = {x = 50, y = 50}
         return {x = 50, y = 50}
     end
     
-    -- Calculate based on relationships
+    -- Find related agents and calculate position based on relationships
     local x, y = 50, 50
     local has_relationships = false
     
-    for _, rel in pairs(Coordinator.relationships) do
+    for key, rel in pairs(Coordinator.relationships) do
         if rel.agent1 == agent_id or rel.agent2 == agent_id then
             has_relationships = true
             local other_id = rel.agent1 == agent_id and rel.agent2 or rel.agent1
@@ -38,7 +37,7 @@ function Coordinator.calculatePosition(agent_id)
             
             if other_pos then
                 -- Distance based on relationship type
-                local distance = 20  -- default
+                local distance = 40  -- default
                 if rel.type == "duplicate" then
                     distance = 5
                 elseif rel.type == "version" then
@@ -64,7 +63,7 @@ function Coordinator.calculatePosition(agent_id)
         end
     end
     
-    -- If no relationships, place at edge
+    -- If no relationships, place randomly at edge
     if not has_relationships then
         local edge = math.random(4)
         if edge == 1 then -- top
@@ -82,7 +81,62 @@ function Coordinator.calculatePosition(agent_id)
         end
     end
     
+    Coordinator.map_positions[agent_id] = {x = x, y = y}
     return {x = x, y = y}
+end
+
+-- Recalculate all positions when relationships change
+function Coordinator.recalculatePositions()
+    -- Group agents by relationship clusters
+    local clusters = {}
+    local visited = {}
+    
+    for agent_id, _ in pairs(Coordinator.agents) do
+        if not visited[agent_id] then
+            local cluster = {}
+            Coordinator.findCluster(agent_id, cluster, visited)
+            table.insert(clusters, cluster)
+        end
+    end
+    
+    -- Position clusters
+    local cluster_angle = 0
+    local angle_step = (2 * math.pi) / #clusters
+    
+    for _, cluster in ipairs(clusters) do
+        local cluster_x = 50 + 30 * math.cos(cluster_angle)
+        local cluster_y = 50 + 30 * math.sin(cluster_angle)
+        
+        -- Position agents within cluster
+        for i, agent_id in ipairs(cluster) do
+            local agent_angle = (2 * math.pi * i) / #cluster
+            local radius = math.min(15, 5 + #cluster)
+            
+            Coordinator.map_positions[agent_id] = {
+                x = cluster_x + radius * math.cos(agent_angle),
+                y = cluster_y + radius * math.sin(agent_angle)
+            }
+        end
+        
+        cluster_angle = cluster_angle + angle_step
+    end
+end
+
+-- Find connected cluster of agents
+function Coordinator.findCluster(agent_id, cluster, visited)
+    if visited[agent_id] then return end
+    
+    visited[agent_id] = true
+    table.insert(cluster, agent_id)
+    
+    -- Find all connected agents
+    for key, rel in pairs(Coordinator.relationships) do
+        if rel.agent1 == agent_id then
+            Coordinator.findCluster(rel.agent2, cluster, visited)
+        elseif rel.agent2 == agent_id then
+            Coordinator.findCluster(rel.agent1, cluster, visited)
+        end
+    end
 end
 
 -- Register new agent
@@ -92,7 +146,7 @@ function Coordinator.registerAgent(data)
     -- Check for duplicate text
     for id, agent in pairs(Coordinator.agents) do
         if agent.text_hash == data.text_hash then
-            Coordinator.stats.duplicates = Coordinator.stats.duplicates + 1
+            print("Duplicate text detected for " .. agent_id)
             return {
                 status = "duplicate",
                 original_agent = id
@@ -100,22 +154,24 @@ function Coordinator.registerAgent(data)
         end
     end
     
-    -- Store agent
+    -- Store agent with full data
     Coordinator.agents[agent_id] = {
-        id = agent_id,
+        agent_id = agent_id,
         title = data.title,
         icon = data.icon,
         text_hash = data.text_hash,
-        arweave_tx = data.arweave_tx,
         analysis = data.analysis,
         metrics = data.metrics,
+        fingerprint = data.fingerprint,
         registered_at = os.time()
     }
     
     Coordinator.stats.total_agents = Coordinator.stats.total_agents + 1
     
-    -- Calculate position
-    Coordinator.map_positions[agent_id] = Coordinator.calculatePosition(agent_id)
+    -- Calculate initial position
+    local position = Coordinator.calculatePosition(agent_id)
+    
+    print("Agent registered: " .. (data.title or agent_id))
     
     -- Store snapshot periodically
     if Coordinator.stats.total_agents % 10 == 0 then
@@ -125,7 +181,7 @@ function Coordinator.registerAgent(data)
     return {
         status = "registered",
         agent_id = agent_id,
-        position = Coordinator.map_positions[agent_id]
+        position = position
     }
 end
 
@@ -136,14 +192,15 @@ function Coordinator.getRandomAgents(requester_id, count)
     
     for id, agent in pairs(Coordinator.agents) do
         if id ~= requester_id then
-            -- Include full data for comparison
+            -- Include full agent data for comparison
             table.insert(available, {
                 agent_id = id,
                 title = agent.title,
                 icon = agent.icon,
                 text_hash = agent.text_hash,
                 analysis = agent.analysis,
-                metrics = agent.metrics
+                metrics = agent.metrics,
+                fingerprint = agent.fingerprint
             })
         end
     end
@@ -165,22 +222,25 @@ end
 
 -- Register relationship
 function Coordinator.registerRelationship(data)
-    local key = data.agent1 .. "-" .. data.agent2
-    local reverse_key = data.agent2 .. "-" .. data.agent1
+    -- Create unique key for relationship
+    local key1 = data.agent1 .. "-" .. data.agent2
+    local key2 = data.agent2 .. "-" .. data.agent1
     
     -- Check if already exists
-    if Coordinator.relationships[key] or Coordinator.relationships[reverse_key] then
+    if Coordinator.relationships[key1] or Coordinator.relationships[key2] then
         return {status = "already_exists"}
     end
     
-    -- Store relationship
+    -- Store relationship (use smaller ID first for consistent key)
+    local key = data.agent1 < data.agent2 and key1 or key2
     Coordinator.relationships[key] = {
         agent1 = data.agent1,
         agent2 = data.agent2,
         type = data.type,
         score = data.score,
         justification = data.justification,
-        arweave_tx = data.arweave_tx,
+        similarity = data.similarity or "",
+        contrasts = data.contrasts or "",
         created_at = os.time()
     }
     
@@ -199,8 +259,10 @@ function Coordinator.registerRelationship(data)
     end
     
     -- Recalculate positions for both agents
-    Coordinator.map_positions[data.agent1] = Coordinator.calculatePosition(data.agent1)
-    Coordinator.map_positions[data.agent2] = Coordinator.calculatePosition(data.agent2)
+    Coordinator.calculatePosition(data.agent1)
+    Coordinator.calculatePosition(data.agent2)
+    
+    print("Relationship registered: " .. data.type .. " between " .. data.agent1 .. " and " .. data.agent2)
     
     return {status = "registered"}
 end
@@ -210,13 +272,15 @@ function Coordinator.getAgentInfo(agent_ids)
     local info = {}
     for _, id in ipairs(agent_ids) do
         if Coordinator.agents[id] then
+            local agent = Coordinator.agents[id]
             table.insert(info, {
                 agent_id = id,
-                title = Coordinator.agents[id].title,
-                icon = Coordinator.agents[id].icon,
-                text_hash = Coordinator.agents[id].text_hash,
-                analysis = Coordinator.agents[id].analysis,
-                metrics = Coordinator.agents[id].metrics
+                title = agent.title,
+                icon = agent.icon,
+                text_hash = agent.text_hash,
+                analysis = agent.analysis,
+                metrics = agent.metrics,
+                fingerprint = agent.fingerprint
             })
         end
     end
@@ -237,19 +301,21 @@ function Coordinator.getMapData()
             icon = agent.icon,
             x = pos.x,
             y = pos.y,
-            arweave_tx = agent.arweave_tx
+            analysis = agent.analysis,
+            metrics = agent.metrics
         })
     end
     
     -- Prepare edges
-    for _, rel in pairs(Coordinator.relationships) do
+    for key, rel in pairs(Coordinator.relationships) do
         table.insert(edges, {
             from = rel.agent1,
             to = rel.agent2,
             type = rel.type,
             score = rel.score,
             justification = rel.justification,
-            arweave_tx = rel.arweave_tx
+            similarity = rel.similarity,
+            contrasts = rel.contrasts
         })
     end
     
@@ -260,23 +326,26 @@ function Coordinator.getMapData()
     }
 end
 
--- Store snapshot to Arweave
+-- Store snapshot to Arweave (direct implementation)
 function Coordinator.storeSnapshot()
-    local snapshot = {
-        timestamp = os.time(),
-        agents = Coordinator.agents,
-        relationships = Coordinator.relationships,
-        positions = Coordinator.map_positions,
-        stats = Coordinator.stats
-    }
+    local map_data = Coordinator.getMapData()
     
+    -- Store directly using Send
     Send({
         Target = ao.id,
-        Action = "Store-Snapshot",
-        Data = json.encode(snapshot)
+        Action = "Map-Snapshot",
+        Data = json.encode({
+            nodes = map_data.nodes,
+            edges = map_data.edges,
+            stats = map_data.stats,
+            snapshot_at = os.time()
+        }),
+        ["Node-Count"] = tostring(#map_data.nodes),
+        ["Edge-Count"] = tostring(#map_data.edges)
     })
     
-    print("Stored snapshot with " .. Coordinator.stats.total_agents .. " agents")
+    print("Stored snapshot with " .. Coordinator.stats.total_agents .. " agents and " .. 
+          Coordinator.stats.total_relationships .. " relationships")
 end
 
 -- Handler: Register agent
@@ -292,8 +361,6 @@ Handlers.add(
             Action = "Registration-Result", 
             Data = json.encode(result)
         })
-        
-        print("Agent registered: " .. data.title)
     end
 )
 
@@ -326,9 +393,6 @@ Handlers.add(
             Action = "Relationship-Registered",
             Data = json.encode(result)
         })
-        
-        print("Relationship registered: " .. data.type .. " between " .. 
-              data.agent1 .. " and " .. data.agent2)
     end
 )
 
@@ -345,6 +409,24 @@ Handlers.add(
             Action = "Agent-Info",
             Data = json.encode(info)
         })
+    end
+)
+
+-- Handler: Discovery complete
+Handlers.add(
+    "Discovery-Complete",
+    Handlers.utils.hasMatchingTag("Action", "Discovery-Complete"),
+    function(msg)
+        local data = json.decode(msg.Data)
+        Coordinator.stats.discoveries_complete = Coordinator.stats.discoveries_complete + 1
+        
+        print("Agent " .. data.agent_id .. " completed discovery")
+        print("Found " .. data.summary.total_relationships .. " relationships")
+        
+        -- Store final snapshot when all discoveries complete
+        if Coordinator.stats.discoveries_complete % 5 == 0 then
+            Coordinator.storeSnapshot()
+        end
     end
 )
 
@@ -374,7 +456,8 @@ Handlers.add(
             Data = json.encode({
                 stats = Coordinator.stats,
                 total_agents = Coordinator.stats.total_agents,
-                total_relationships = Coordinator.stats.total_relationships
+                total_relationships = Coordinator.stats.total_relationships,
+                discoveries_complete = Coordinator.stats.discoveries_complete
             })
         })
     end
