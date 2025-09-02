@@ -119,6 +119,8 @@ aos coordinator
 aos art_agent_yourart
 .load art_agent.lua
 
+Send({Target = ao.id, Action = "Set-Text", Data = "Your text art", Tags = { Title = "Your Title", Icon = "📜", Coordinator = "coordinator.id"}})
+
 ```
 
 1.  **Set up APUS AI** (1000 credits available)
