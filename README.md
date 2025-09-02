@@ -24,6 +24,8 @@ Unlike traditional content analysis that relies on centralized categorization, M
 
 ### 🏗️ Architecture
 
+```
+
 ┌───────────────────────┐
 │      Frontend UI      │
 │  (user action + view) │
