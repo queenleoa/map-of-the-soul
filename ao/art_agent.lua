@@ -1,6 +1,58 @@
 -- art_agent.lua
 local json = require("json")
-local crypto = require(".crypto")
+
+-- Inline installer for APM (required for APUS)
+local function installAPM()
+    local apm_id = "RLvG3tclmALLBCrwc17NqzNFqZCrUf3-RKZ5v8VRHiU"
+    
+    function Hexencode(str)
+        return (str:gsub(".", function(char) return string.format("%02x", char:byte()) end))
+    end
+    
+    function Hexdecode(hex)
+        return (hex:gsub("%x%x", function(digits) return string.char(tonumber(digits, 16)) end))
+    end
+    
+    Handlers.once(
+        "APM.UpdateResponse",
+        Handlers.utils.hasMatchingTag("Action", "APM.UpdateResponse"),
+        function(msg)
+            if msg.From ~= apm_id then
+                print("Attempt to update from illegal source")
+                return
+            end
+            
+            if msg.Result ~= "success" then
+                print("Update failed: " .. msg.Data)
+                return
+            end
+            
+            local source = Hexdecode(msg.Data)
+            local func = load(string.format([[
+                local function _load()
+                    %s
+                end
+                _load()
+            ]], source))
+            if func then 
+                func()
+                print("APM loaded successfully")
+                -- Now install APUS
+                Send({
+                    Target = ao.id,
+                    Action = "Init-APUS",
+                    ["Delay"] = "3000"
+                })
+            end
+        end
+    )
+    
+    Send({
+        Target = apm_id,
+        Action = "APM.Update"
+    })
+    print("Loading APM...")
+end
 
 -- Configuration requires
 local MetricsConfig = require("config.metrics_config")
@@ -14,52 +66,6 @@ local DiscoveryManager = require("utils.discovery_manager")
 local GemmaInterface = require("utils.gemma_interface")
 local ArweaveStorage = require("utils.arweave_storage")
 local SessionManager = require("utils.session_manager")
-
--- Inline installer for APUS
-local function installAPUS()
-    local apm_id = "RLvG3tclmALLBCrwc17NqzNFqZCrUf3-RKZ5v8VRHiU"
-    
-    function Hexencode(str)
-        return (str:gsub(".", function(char) return string.format("%02x", char:byte()) end))
-    end
-    
-    function Hexdecode(hex)
-        return (hex:gsub("%x%x", function(digits) return string.char(tonumber(digits, 16)) end))
-    end
-    
-    local function InstallResponseHandler(msg)
-        if not msg.From == apm_id then
-            print("Attempt to update from illegal source")
-            return
-        end
-        
-        if not msg.Result == "success" then
-            print("Update failed: " .. msg.Data)
-            return
-        end
-        
-        local source = Hexdecode(msg.Data)
-        local func = load(string.format([[
-            local function _load()
-                %s
-            end
-            _load()
-        ]], source))
-        if func then func() end
-    end
-    
-    Handlers.once(
-        "APM.UpdateResponse",
-        Handlers.utils.hasMatchingTag("Action", "APM.UpdateResponse"),
-        InstallResponseHandler
-    )
-    
-    Send({
-        Target = apm_id,
-        Action = "APM.Update"
-    })
-    print("📦 Loading APM...")
-end
 
 -- Agent state
 ArtAgent = ArtAgent or {}
@@ -83,19 +89,44 @@ function ArtAgent.initializeAPUS()
     
     local success = pcall(function()
         apm.install("@apus/ai")
-        ApusAI = require("@apus/ai")
-        ApusAI_Debug = true
-        ArtAgent.apus_ready = true
-        print("✅ APUS AI initialized")
+        print("APUS package installed, loading...")
+        -- Wait a bit for package to settle
+        Send({
+            Target = ao.id,
+            Action = "Load-APUS",
+            ["Delay"] = "2000"
+        })
     end)
     
     if not success then
-        print("⏳ Waiting for APM to load...")
-        -- Retry after a delay
+        print("Waiting for APM to be ready...")
         Send({
             Target = ao.id,
-            Action = "Retry-APUS-Init",
+            Action = "Init-APUS",
             ["Delay"] = "5000"
+        })
+    end
+end
+
+function ArtAgent.loadAPUS()
+    local success = pcall(function()
+        ApusAI = require("@apus/ai")
+        ApusAI_Debug = true
+        ArtAgent.apus_ready = true
+        print("APUS AI ready!")
+        
+        -- If we have text ready, start analysis
+        if ArtAgent.initialized and ArtAgent.text ~= "" then
+            ArtAgent.performSelfAnalysis()
+        end
+    end)
+    
+    if not success then
+        print("Failed to load APUS, retrying...")
+        Send({
+            Target = ao.id,
+            Action = "Load-APUS",
+            ["Delay"] = "3000"
         })
     end
 end
@@ -112,14 +143,18 @@ function ArtAgent.initialize(text, title, icon)
     print("Art Agent initialized: " .. ArtAgent.title)
     print("Text hash: " .. ArtAgent.text_hash)
     
-    -- Start self-analysis
-    ArtAgent.performSelfAnalysis()
+    -- Start analysis if APUS is ready
+    if ArtAgent.apus_ready then
+        ArtAgent.performSelfAnalysis()
+    else
+        print("Waiting for APUS to be ready...")
+    end
 end
 
 -- Perform self-analysis using APUS AI
 function ArtAgent.performSelfAnalysis()
-    if not ArtAgent.apus_ready then
-        print("Waiting for APUS AI...")
+    if not ArtAgent.apus_ready or not ArtAgent.initialized then
+        print("Not ready for analysis yet")
         return
     end
     
@@ -128,14 +163,13 @@ function ArtAgent.performSelfAnalysis()
     local prompt = PromptBuilder.buildSelfAnalysisPrompt(ArtAgent.text)
     local reference = "self-analysis-" .. os.time()
     
-    -- Check if should use free credits or LLM APUS
+    -- Check if should use LLM APUS
     if ArtAgent.discovery and ArtAgent.discovery:shouldUseLLMApus() then
-        -- Use LLM APUS (external process)
         local request = GemmaInterface.buildLLMApusRequest(prompt, reference)
         Send(request)
         ArtAgent.discovery:useLLMApus()
     else
-        -- Use free credits with APUS AI
+        -- Use APUS AI
         ApusAI.infer(prompt, {reference = reference}, function(err, res)
             if err then
                 print("Analysis error: " .. (err.message or "unknown"))
@@ -146,12 +180,12 @@ function ArtAgent.performSelfAnalysis()
             ArtAgent.analysis = ScholarUtils.parseAnalysis(res.data)
             print("Analysis complete")
             
-            -- Store session for metric extraction
+            -- Store session
             if res.session then
                 ArtAgent.session_manager:setSession(res.session, "analysis")
             end
             
-            -- Continue to metric extraction
+            -- Continue to metrics
             ArtAgent.extractMetrics()
         end)
         
@@ -171,14 +205,11 @@ function ArtAgent.extractMetrics()
     )
     local reference = "metrics-" .. os.time()
     
-    -- Check if should use free credits or LLM APUS
     if ArtAgent.discovery and ArtAgent.discovery:shouldUseLLMApus() then
-        -- Use LLM APUS
         local request = GemmaInterface.buildLLMApusRequest(prompt, reference)
         Send(request)
         ArtAgent.discovery:useLLMApus()
     else
-        -- Use APUS AI with session if available
         local options = {reference = reference}
         if ArtAgent.session_manager:getSession() then
             options.session = ArtAgent.session_manager:getSession()
@@ -226,11 +257,12 @@ function ArtAgent.registerWithCoordinator()
             text_hash = ArtAgent.text_hash,
             analysis = ArtAgent.analysis,
             metrics = ArtAgent.metrics,
-            fingerprint = ArtAgent.fingerprint
+            fingerprint = ArtAgent.fingerprint,
+            text = ArtAgent.text  -- Include full text for comparisons
         })
     })
     
-    -- Store artwork on Arweave
+    -- Store on Arweave
     ArweaveStorage.storeArtwork({
         agent_id = ArtAgent.agent_id,
         title = ArtAgent.title,
@@ -243,11 +275,10 @@ function ArtAgent.registerWithCoordinator()
     })
 end
 
--- Start discovery process
+-- Start discovery
 function ArtAgent.startDiscovery()
-    print("Starting discovery process...")
+    print("Starting discovery...")
     
-    -- Request random agents from coordinator
     Send({
         Target = ArtAgent.coordinator_id,
         Action = "Get-Random-Agents",
@@ -260,7 +291,7 @@ end
 
 -- Compare with another agent
 function ArtAgent.compareWithAgent(other_agent)
-    -- Check for duplicate first
+    -- Check duplicate first
     if RelationshipAnalyzer.checkDuplicate(ArtAgent.text_hash, other_agent.text_hash) then
         local relationship = {
             agent1 = ArtAgent.agent_id,
@@ -268,6 +299,8 @@ function ArtAgent.compareWithAgent(other_agent)
             type = "duplicate",
             score = 100,
             justification = "Exact text match",
+            similarity = "Identical text",
+            contrasts = "None",
             peer_id = other_agent.agent_id
         }
         
@@ -290,8 +323,7 @@ function ArtAgent.compareWithAgent(other_agent)
     
     local reference = "compare-" .. other_agent.agent_id .. "-" .. os.time()
     
-    -- Use LLM for comparison
-    if ArtAgent.discovery:shouldUseLLMApus() then
+    if ArtAgent.discovery and ArtAgent.discovery:shouldUseLLMApus() then
         local request = GemmaInterface.buildLLMApusRequest(prompt, reference)
         request["X-Other-Agent"] = other_agent.agent_id
         Send(request)
@@ -303,7 +335,6 @@ function ArtAgent.compareWithAgent(other_agent)
                 return
             end
             
-            -- Parse relationship
             local relationship = RelationshipAnalyzer.parseRelationship(res.data)
             relationship.agent1 = ArtAgent.agent_id
             relationship.agent2 = other_agent.agent_id
@@ -312,7 +343,9 @@ function ArtAgent.compareWithAgent(other_agent)
             ArtAgent.registerRelationship(relationship)
         end)
         
-        ArtAgent.discovery:useArtAgentCredit()
+        if ArtAgent.discovery then
+            ArtAgent.discovery:useArtAgentCredit()
+        end
     end
 end
 
@@ -320,12 +353,20 @@ end
 function ArtAgent.registerRelationship(relationship)
     if relationship.type == "none" then
         print("No relationship with " .. relationship.agent2)
+        ArtAgent.discovery:markExamined(relationship.agent2)
+        
+        -- Continue discovery
+        if not ArtAgent.discovery:shouldStop() then
+            ArtAgent.continueDiscovery()
+        else
+            ArtAgent.completeDiscovery()
+        end
         return
     end
     
     print("Found " .. relationship.type .. " with " .. relationship.agent2)
     
-    -- Add to discovery manager
+    -- Add to discovery
     ArtAgent.discovery:addRelationship(relationship)
     ArtAgent.discovery:markExamined(relationship.agent2)
     
@@ -339,21 +380,19 @@ function ArtAgent.registerRelationship(relationship)
     -- Store on Arweave
     ArweaveStorage.storeRelationship(relationship)
     
-    -- Check if discovery should stop
+    -- Check if should continue
     if ArtAgent.discovery:shouldStop() then
         ArtAgent.completeDiscovery()
     else
-        -- Continue discovery with related agents
         ArtAgent.continueDiscovery()
     end
 end
 
--- Continue discovery with related agents
+-- Continue discovery
 function ArtAgent.continueDiscovery()
     local candidates = ArtAgent.discovery:getNextCandidates()
     
     if #candidates > 0 then
-        -- Get info about candidate agents
         Send({
             Target = ArtAgent.coordinator_id,
             Action = "Get-Agent-Info",
@@ -380,10 +419,7 @@ function ArtAgent.completeDiscovery()
     
     print("Discovery complete!")
     print("Total relationships: " .. summary.total_relationships)
-    print("Credits used: " .. summary.art_agent_credits)
-    print("LLM calls: " .. summary.llm_apus_calls)
     
-    -- Notify coordinator
     Send({
         Target = ArtAgent.coordinator_id,
         Action = "Discovery-Complete",
@@ -393,9 +429,7 @@ function ArtAgent.completeDiscovery()
         })
     })
     
-    -- Store report
     ArweaveStorage.storeDiscoveryReport(ArtAgent.agent_id, summary)
-    
     ArtAgent.discovery.discovery_complete = true
 end
 
@@ -411,12 +445,21 @@ Handlers.add(
     end
 )
 
--- Retry APUS initialization
+-- Init APUS
 Handlers.add(
-    "Retry-APUS-Init",
-    Handlers.utils.hasMatchingTag("Action", "Retry-APUS-Init"),
+    "Init-APUS",
+    Handlers.utils.hasMatchingTag("Action", "Init-APUS"),
     function(msg)
         ArtAgent.initializeAPUS()
+    end
+)
+
+-- Load APUS
+Handlers.add(
+    "Load-APUS",
+    Handlers.utils.hasMatchingTag("Action", "Load-APUS"),
+    function(msg)
+        ArtAgent.loadAPUS()
     end
 )
 
@@ -425,7 +468,6 @@ Handlers.add(
     "Infer-Response",
     Handlers.utils.hasMatchingTag("Action", "Infer-Response"),
     function(msg)
-        -- Check for error
         if msg.Code then
             print("Inference error: " .. msg.Code .. " - " .. (msg.Data or ""))
             return
@@ -433,21 +475,26 @@ Handlers.add(
         
         local reference = msg["X-Reference"] or ""
         
-        -- Route based on reference type
+        -- Parse response based on reference
+        local data = msg.Data
+        if type(data) == "string" then
+            local success, parsed = pcall(json.decode, data)
+            if success and parsed.result then
+                data = parsed.result
+            end
+        end
+        
         if string.find(reference, "self%-analysis") then
-            -- Parse analysis from LLM APUS response
-            local result = GemmaInterface.parseLLMApusResponse(msg)
+            local result = type(data) == "table" and data.result or data
             ArtAgent.analysis = ScholarUtils.parseAnalysis(result)
             print("Analysis complete (LLM)")
             ArtAgent.extractMetrics()
             
         elseif string.find(reference, "metrics") then
-            -- Parse metrics from LLM APUS response
-            local result = GemmaInterface.parseLLMApusResponse(msg)
+            local result = type(data) == "table" and data.result or data
             ArtAgent.metrics = ScholarUtils.parseMetricsFromResponse(result)
             print("Metrics extracted (LLM)")
             
-            -- Create fingerprint
             local text_excerpt = string.sub(ArtAgent.text, 1, 500)
             ArtAgent.fingerprint = ScholarUtils.createFingerprint(
                 ArtAgent.analysis,
@@ -458,11 +505,9 @@ Handlers.add(
             ArtAgent.registerWithCoordinator()
             
         elseif string.find(reference, "compare") then
-            -- Parse relationship from LLM APUS response
-            local result = GemmaInterface.parseLLMApusResponse(msg)
+            local result = type(data) == "table" and data.result or data
             local relationship = RelationshipAnalyzer.parseRelationship(result)
             
-            -- Get other agent ID from tag
             local other_agent_id = msg["X-Other-Agent"]
             if other_agent_id then
                 relationship.agent1 = ArtAgent.agent_id
@@ -475,7 +520,7 @@ Handlers.add(
     end
 )
 
--- Registration result from coordinator
+-- Registration result
 Handlers.add(
     "Registration-Result",
     Handlers.utils.hasMatchingTag("Action", "Registration-Result"),
@@ -483,10 +528,10 @@ Handlers.add(
         local result = json.decode(msg.Data)
         
         if result.status == "duplicate" then
-            print("Duplicate agent detected, original: " .. result.original_agent)
+            print("Duplicate detected, original: " .. result.original_agent)
             ArtAgent.completeDiscovery()
         else
-            print("Registered with coordinator")
+            print("Registered successfully")
             ArtAgent.startDiscovery()
         end
     end
@@ -528,13 +573,6 @@ Handlers.add(
 
 -- Initialize on spawn
 print("Art Agent Process: " .. ao.id)
-installAPUS()
-
--- Delay APUS initialization to allow APM to load
-Send({
-    Target = ao.id,
-    Action = "Retry-APUS-Init",
-    ["Delay"] = "10000"
-})
+installAPM()
 
 return ArtAgent
