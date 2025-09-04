@@ -7,7 +7,7 @@ local ScholarUtils = {}
 
 -- Generate hash for text
 function ScholarUtils.hashText(text)
-    return crypto.digest.sha256(text).asHex()
+    return crypto.digest.sha2_256(text).asHex()
 end
 
 -- Parse self-analysis from LLM response

@@ -7,7 +7,7 @@ ProcessConfig.PROCESSES = {
     llm_apus = "A5TeWstBP1mD3FiZoU9JrbFUQ9Xg-hBgxHT7oeEVMr0",
     
     -- Coordinator (set during deployment)
-    coordinator = "i7GA8Xyx_S_EJ7GfPNnXZVd4OOWn_zVA1FgJASx6ihs"  -- Will be set when spawning agents
+    coordinator = "ZzJ0V-nD3E0XT2tBFXpPdNaifFVXpHbKwigx_xJNMZw"  -- Will be set when spawning agents
 }
 
 -- APUS AI settings
