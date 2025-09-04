@@ -38,11 +38,8 @@ local function installAPM()
                 func()
                 print("APM loaded successfully")
                 -- Now install APUS
-                Send({
-                    Target = ao.id,
-                    Action = "Init-APUS",
-                    ["Delay"] = "3000"
-                })
+                print("Installing APUS AI...")
+                apm.install("@apus/ai")
             end
         end
     )
@@ -82,57 +79,68 @@ ArtAgent.session_manager = SessionManager.new()
 ArtAgent.initialized = false
 ArtAgent.apus_ready = false
 ArtAgent.coordinator_id = ProcessConfig.PROCESSES.coordinator
+ArtAgent.text_ready = false
 
--- Initialize APUS after APM loads
-function ArtAgent.initializeAPUS()
-    if ArtAgent.apus_ready then return end
-    
-    local success = pcall(function()
-        apm.install("@apus/ai")
-        print("APUS package installed, loading...")
-        -- Wait a bit for package to settle
-        Send({
-            Target = ao.id,
-            Action = "Load-APUS",
-            ["Delay"] = "2000"
-        })
-    end)
-    
-    if not success then
-        print("Waiting for APM to be ready...")
-        Send({
-            Target = ao.id,
-            Action = "Init-APUS",
-            ["Delay"] = "5000"
-        })
-    end
-end
-
-function ArtAgent.loadAPUS()
-    local success = pcall(function()
-        ApusAI = require("@apus/ai")
-        ApusAI_Debug = true
-        ArtAgent.apus_ready = true
-        print("APUS AI ready!")
-        
-        -- If we have text ready, start analysis
-        if ArtAgent.initialized and ArtAgent.text ~= "" then
-            ArtAgent.performSelfAnalysis()
+-- APUS detection handler (from working version)
+Handlers.add(
+    "APUS.Check",
+    function(msg)
+        local data = msg.Data or ""
+        if string.match(data, "Downloaded @apus/ai") or
+           string.match(data, "apus/ai@") or
+           string.match(data, "Successfully installed") or
+           (string.match(data, "✅") and string.match(data, "apus")) then
+            return true
         end
-    end)
-    
-    if not success then
-        print("Failed to load APUS, retrying...")
-        Send({
-            Target = ao.id,
-            Action = "Load-APUS",
-            ["Delay"] = "3000"
-        })
+        return false
+    end,
+    function(msg)
+        if not ArtAgent.apus_ready then
+            print("APUS AI detected as installed")
+            
+            local success = pcall(function()
+                ApusAI = require('@apus/ai')
+                ApusAI_Debug = true
+            end)
+            
+            if success then
+                ArtAgent.apus_ready = true
+                print("✅ APUS AI ready!")
+                
+                -- Check if text was already set and start analysis
+                if ArtAgent.text_ready and not ArtAgent.initialized then
+                    ArtAgent.initialize(ArtAgent.text, ArtAgent.title, ArtAgent.icon)
+                end
+            else
+                print("⚠️ APUS require failed, will retry when needed")
+            end
+        end
     end
-end
+)
 
 -- Initialize agent with artwork text
 function ArtAgent.initialize(text, title, icon)
+    if ArtAgent.initialized then return end
+    
+    -- Try to load APUS if not ready
+    if not ArtAgent.apus_ready then
+        local success = pcall(function()
+            ApusAI = require('@apus/ai')
+            ApusAI_Debug = true
+        end)
+        if success then
+            ArtAgent.apus_ready = true
+            print("APUS AI loaded!")
+        else
+            print("APUS not ready yet, will retry when available")
+            ArtAgent.text_ready = true
+            ArtAgent.text = text
+            ArtAgent.title = title or "Untitled"
+            ArtAgent.icon = icon or "📝"
+            return
+        end
+    end
+    
     ArtAgent.text = text
     ArtAgent.title = title or "Untitled"
     ArtAgent.icon = icon or "📝"
@@ -143,12 +151,8 @@ function ArtAgent.initialize(text, title, icon)
     print("Art Agent initialized: " .. ArtAgent.title)
     print("Text hash: " .. ArtAgent.text_hash)
     
-    -- Start analysis if APUS is ready
-    if ArtAgent.apus_ready then
-        ArtAgent.performSelfAnalysis()
-    else
-        print("Waiting for APUS to be ready...")
-    end
+    -- Start analysis immediately
+    ArtAgent.performSelfAnalysis()
 end
 
 -- Perform self-analysis using APUS AI
@@ -441,25 +445,17 @@ Handlers.add(
     Handlers.utils.hasMatchingTag("Action", "Initialize"),
     function(msg)
         local data = json.decode(msg.Data)
+        
+        -- Save text data
+        ArtAgent.text = data.text
+        ArtAgent.title = data.title or "Untitled"
+        ArtAgent.icon = data.icon or "📝"
+        ArtAgent.text_ready = true
+        
+        print("Text received: " .. ArtAgent.title)
+        
+        -- Try to initialize (will wait for APUS if not ready)
         ArtAgent.initialize(data.text, data.title, data.icon)
-    end
-)
-
--- Init APUS
-Handlers.add(
-    "Init-APUS",
-    Handlers.utils.hasMatchingTag("Action", "Init-APUS"),
-    function(msg)
-        ArtAgent.initializeAPUS()
-    end
-)
-
--- Load APUS
-Handlers.add(
-    "Load-APUS",
-    Handlers.utils.hasMatchingTag("Action", "Load-APUS"),
-    function(msg)
-        ArtAgent.loadAPUS()
     end
 )
 
@@ -568,6 +564,28 @@ Handlers.add(
                 ArtAgent.compareWithAgent(agent)
             end
         end
+    end
+)
+
+-- Get status
+Handlers.add(
+    "Get-Status",
+    Handlers.utils.hasMatchingTag("Action", "Get-Status"),
+    function(msg)
+        Send({
+            Target = msg.From,
+            Action = "Status",
+            Data = json.encode({
+                initialized = ArtAgent.initialized,
+                apus_ready = ArtAgent.apus_ready,
+                text_ready = ArtAgent.text_ready,
+                title = ArtAgent.title,
+                analysis = ArtAgent.analysis,
+                metrics = ArtAgent.metrics,
+                discovery_status = ArtAgent.discovery and
+                    ArtAgent.discovery:getSummary() or "not started"
+            })
+        })
     end
 )
 
