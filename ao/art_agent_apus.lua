@@ -1,9 +1,45 @@
--- art_agent.lua
+-- art_agent.lua (Simplified, hardened) with debug prints
 local json = require("json")
 
--- ================== State variables ==================
+-- Configuration requires
+print("Loading config.metrics_config...")
+local MetricsConfig = require("config.metrics_config")
+print("MetricsConfig type:", type(MetricsConfig))
+
+print("Loading config.process_config...")
+local ProcessConfig = require("config.process_config")
+print("ProcessConfig type:", type(ProcessConfig))
+
+-- Utility requires
+print("Loading utils.scholar_utils...")
+local ScholarUtils = require("utils.scholar_utils")
+print("ScholarUtils type:", type(ScholarUtils))
+if type(ScholarUtils) == "table" then
+    print("ScholarUtils.hashText type:", type(ScholarUtils.hashText))
+    print("ScholarUtils.parseAnalysis type:", type(ScholarUtils.parseAnalysis))
+end
+
+print("Loading utils.prompt_builder...")
+local PromptBuilder = require("utils.prompt_builder")
+print("PromptBuilder type:", type(PromptBuilder))
+if type(PromptBuilder) == "table" then
+    print("PromptBuilder.buildSelfAnalysisPrompt type:", type(PromptBuilder.buildSelfAnalysisPrompt))
+end
+
+print("Loading utils.relationship_analyzer...")
+local RelationshipAnalyzer = require("utils.relationship_analyzer")
+print("RelationshipAnalyzer type:", type(RelationshipAnalyzer))
+
+print("Loading utils.discovery_manager...")
+local DiscoveryManager = require("utils.discovery_manager")
+print("DiscoveryManager type:", type(DiscoveryManager))
+
+-- Safe alias to avoid any accidental global 'string' shadowing elsewhere
+local _string = string
+
+-- Agent state
 ArtAgent = ArtAgent or {}
-ArtAgent.id = ao.id
+ArtAgent.agent_id = ao.id
 ArtAgent.title = ""
 ArtAgent.icon = "📝"
 ArtAgent.text = ""
@@ -11,624 +47,441 @@ ArtAgent.text_hash = ""
 ArtAgent.analysis = {}
 ArtAgent.metrics = {}
 ArtAgent.fingerprint = {}
-ArtAgent.relationships = {}
-ArtAgent.credits_remaining = 5
+ArtAgent.discovery = nil
 ArtAgent.initialized = false
-ArtAgent.discovery_manager = nil
-ArtAgent.session_manager = nil
-ArtAgent.llm_apus_process = "A5TeWstBP1mD3FiZoU9JrbFUQ9Xg-hBgxHT7oeEVMr0"
-ArtAgent.coordinator_process = ""
-ArtAgent.apus_installed = false
-ArtAgent.apm_loaded = false
-ArtAgent.modules_loaded = false
 
--- ================== Inline APM installer (as provided / working) ==================
-local apm_id = "RLvG3tclmALLBCrwc17NqzNFqZCrUf3-RKZ5v8VRHiU"
-
-function Hexencode(str)
-  return (str:gsub(".", function(char) return string.format("%02x", char:byte()) end))
+print("Checking ProcessConfig.PROCESSES...")
+if ProcessConfig and ProcessConfig.PROCESSES then
+    ArtAgent.coordinator_id = ProcessConfig.PROCESSES.coordinator
+    ArtAgent.llm_apus = ProcessConfig.PROCESSES.llm_apus
+else
+    print("ERROR: ProcessConfig.PROCESSES is nil or invalid")
+    ArtAgent.coordinator_id = nil
+    ArtAgent.llm_apus = nil
 end
 
-function Hexdecode(hex)
-  return (hex:gsub("%x%x", function(digits) return string.char(tonumber(digits, 16)) end))
-end
+print("ArtAgent expecting llm_apus at: " .. tostring(ArtAgent.llm_apus))
+print("Coordinator at: " .. tostring(ArtAgent.coordinator_id))
 
-function HandleRun(func, msg)
-  local ok, err = pcall(func, msg)
-  if not ok then
-    local clean_err = err:match(":%d+: (.+)") or err
-    print(msg.Action .. " - " .. err)
-    ao.send({
-      Target = msg.From,
-      Data = clean_err,
-      Result = "error"
+-- Helper to send inference request to LLM APUS
+function ArtAgent.sendInferRequest(prompt, reference, extra_tags)
+  print("sendInferRequest called with prompt type:", type(prompt))
+  local request = {
+    Target         = ArtAgent.llm_apus,
+    Action         = "Infer",
+    ["X-Prompt"]   = tostring(prompt or ""),
+    ["X-Reference"]= tostring(reference or ("ref-" .. os.time())),
+    ["X-Options"]  = json.encode({
+      temperature = 0.7,
+      max_tokens  = 32000,
+      top_p       = 0.9
     })
+  }
+
+  if extra_tags then
+    for k, v in pairs(extra_tags) do
+      request[k] = v
+    end
   end
+
+  Send(request)
 end
 
-local function InstallResponseHandler(msg)
-  local from = msg.From
-  -- (keeping your original condition/logic)
-  if not from == apm_id then
-    print("Attempt to update from illegal source")
+-- Initialize agent with artwork text
+function ArtAgent.initialize(text, title, icon)
+  print("ArtAgent.initialize called with text type:", type(text))
+  if ArtAgent.initialized then
+    print("Already initialized")
     return
   end
 
-  if not msg.Result == "success" then
-    print("Update failed: " .. msg.Data)
+  ArtAgent.text = text or ""
+  ArtAgent.title = title or "Untitled"
+  ArtAgent.icon = icon or "📝"
+  
+  print("Calling ScholarUtils.hashText...")
+  if type(ScholarUtils.hashText) ~= "function" then
+    print("ERROR: ScholarUtils.hashText is not a function, it's a " .. type(ScholarUtils.hashText))
     return
   end
-
-  local source = msg.Data
-  local version = msg.Version
-
-  if source then
-    source = Hexdecode(source)
+  
+  ArtAgent.text_hash = ScholarUtils.hashText(ArtAgent.text or "")
+  
+  print("Calling DiscoveryManager.new...")
+  if type(DiscoveryManager.new) ~= "function" then
+    print("ERROR: DiscoveryManager.new is not a function, it's a " .. type(DiscoveryManager.new))
+    return
   end
-
-  local func, err = load(string.format([[
-      local function _load()
-          %s
-      end
-      _load()
-  ]], source))
-  if not func then
-    error("Error compiling load function: " .. err)
-  end
-  func()
-
-  apm._version = version
-  ArtAgent.apm_loaded = true
-  print("✅ APM loaded, version: " .. version)
-
-  -- Now install APUS (as in your working code)
-  print("Installing APUS AI...")
-  apm.install("@apus/ai")
-end
-
-Handlers.once(
-  "APM.UpdateResponse",
-  Handlers.utils.hasMatchingTag("Action", "APM.UpdateResponse"),
-  function(msg)
-    HandleRun(InstallResponseHandler, msg)
-  end
-)
-
-Send({
-  Target = apm_id,
-  Action = "APM.Update"
-})
-print("📦 Loading APM...")
-
--- ================== APUS detection (as in your working code) ==================
-Handlers.add(
-  "APUS.Check",
-  function(msg)
-    local data = msg.Data or ""
-    if string.match(data, "Downloaded @apus/ai")
-      or string.match(data, "apus/ai@")
-      or string.match(data, "Successfully installed")
-      or (string.match(data, "✅") and string.match(data, "apus")) then
-      return true
-    end
-    return false
-  end,
-  function(msg)
-    if not ArtAgent.apus_installed then
-      print("APUS AI detected as installed")
-      ArtAgent.apus_installed = true
-
-      local success, result = pcall(function()
-        ApusAI = require('@apus/ai')
-        ApusAI_Debug = true
-        return true
-      end)
-
-      if success then
-        print("✅ APUS AI loaded successfully")
-        ArtAgent.tryLoadModules()
-      else
-        print("⚠️ APUS require failed, will retry: " .. tostring(result))
-      end
-    end
-  end
-)
-
--- ================== Utility modules loader (from your working code) ==================
-function ArtAgent.tryLoadModules()
-  if ArtAgent.modules_loaded then return end
-
-  local success = pcall(function()
-    ScholarUtils         = require("utils.scholar_utils")
-    RelationshipAnalyzer = require("utils.relationship_analyzer")
-    DiscoveryManager     = require("utils.discovery_manager")
-    PromptBuilder        = require("utils.prompt_builder")
-    SessionManager       = require("utils.session_manager")
-    ArweaveStorage       = require("utils.arweave_storage")
-    MetricsConfig        = require("config.metrics_config")
-  end)
-
-  if success then
-    ArtAgent.modules_loaded = true
-    ArtAgent.session_manager = SessionManager.new()
-    print("✅ All modules loaded")
-
-    if ArtAgent.text ~= "" then
-      ArtAgent.initialize()
-    end
-  else
-    print("⚠️ Modules not yet available, will load when needed")
-  end
-end
-
--- ================== Initialize (original flow, with your fallbacks) ==================
-function ArtAgent.initialize()
-  if ArtAgent.initialized then return end
---   if not ArtAgent.apus_installed then
---     print("Waiting for APUS AI to install...")
---     return
---   end
-
-  if not ApusAI then
-    local success = pcall(function()
-      ApusAI = require('@apus/ai')
-      ApusAI_Debug = true
-    end)
-    if not success then
-      print("APUS not ready yet, retrying...")
-      return
-    end
-  end
-
-  print("Initializing Art Agent...")
-
-  if ScholarUtils and ScholarUtils.hashText then
-    ArtAgent.text_hash = ScholarUtils.hashText(ArtAgent.text)
-  else
-    -- simple fallback hash
-    local hash = 0
-    for i = 1, #ArtAgent.text do
-      hash = (hash * 31 + string.byte(ArtAgent.text, i)) % 2147483647
-    end
-    ArtAgent.text_hash = tostring(hash)
-  end
-
-  if DiscoveryManager then
-    ArtAgent.discovery_manager = DiscoveryManager.new(ArtAgent.id)
-  else
-    -- minimal fallback discovery manager
-    ArtAgent.discovery_manager = {
-      examined_agents = {},
-      relationships = {},
-      art_agent_credits = 0,
-      llm_apus_calls = 0,
-      shouldStop = function() return #ArtAgent.relationships > 10 end,
-      markExamined = function(self, id) self.examined_agents[id] = true end,
-      isExamined = function(self, id) return self.examined_agents[id] end,
-      useArtAgentCredit = function(self) self.art_agent_credits = self.art_agent_credits + 1 end,
-      useLLMApus = function(self) self.llm_apus_calls = self.llm_apus_calls + 1 end,
-      shouldUseLLMApus = function(self) return self.art_agent_credits >= 3 end,
-      addRelationship = function(self, rel) table.insert(self.relationships, rel) end,
-      getSummary = function(self)
-        return {
-          total_examined = 0,
-          total_relationships = #self.relationships,
-          art_agent_credits = self.art_agent_credits,
-          llm_apus_calls = self.llm_apus_calls
-        }
-      end
-    }
-  end
-
-  ArtAgent.analyzeSelf()
+  
+  ArtAgent.discovery = DiscoveryManager.new(ao.id)
   ArtAgent.initialized = true
+
+  print("Art Agent initialized: " .. ArtAgent.title)
+  print("Text hash: " .. ArtAgent.text_hash)
+
+  -- Start self-analysis
+  ArtAgent.performSelfAnalysis()
 end
 
--- ================== Self-analysis (original) ==================
-function ArtAgent.analyzeSelf()
+-- Perform self-analysis using LLM APUS
+function ArtAgent.performSelfAnalysis()
   print("Starting self-analysis...")
-
-  local prompt
-  if PromptBuilder and PromptBuilder.buildSelfAnalysisPrompt then
-    prompt = PromptBuilder.buildSelfAnalysisPrompt(ArtAgent.text)
-  else
-    prompt = string.format([[
-Analyze this text and provide:
-1. Emotional tone and thematic elements
-2. Stylistic features
-3. Hidden insight or unique characteristic
-
-Text: %s
-
-Format as JSON: {"Emotional Thematic": "", "Stylistic Linguistic Canonical": "", "Uniqueness": ""}
-]], string.sub(ArtAgent.text, 1, 5000))
-  end
-
-  if ArtAgent.credits_remaining >= 2 then
-    ApusAI.infer(prompt, {}, function(err, res)
-      if err then
-        print("Analysis error: " .. err.message)
-        return
-      end
-
-      if ScholarUtils and ScholarUtils.parseAnalysis then
-        ArtAgent.analysis = ScholarUtils.parseAnalysis(res.data)
-      else
-        ArtAgent.analysis = {
-          emotional_tone       = res.data or "",
-          thematic_elements    = "",
-          stylistic_features   = "",
-          hidden_insight       = ""
-        }
-      end
-
-      ArtAgent.credits_remaining = ArtAgent.credits_remaining - 2
-      ArtAgent.discovery_manager:useArtAgentCredit()
-      ArtAgent.discovery_manager:useArtAgentCredit()
-
-      print("Analysis complete, extracting metrics...")
-      ArtAgent.extractMetrics()
-    end)
-  else
-    print("Insufficient credits for self-analysis")
-  end
-end
-
--- ================== Extract metrics (original) ==================
-function ArtAgent.extractMetrics()
-  local metrics_prompt = PromptBuilder and PromptBuilder.buildMetricExtractionPrompt
-      and PromptBuilder.buildMetricExtractionPrompt(ArtAgent.analysis, ArtAgent.text)
-      or (("Extract concise metrics from this analysis and text:\n\nANALYSIS:\n%s\n\nTEXT:\n%s")
-            :format(json.encode(ArtAgent.analysis), string.sub(ArtAgent.text,1,2000)))
-
-  if ArtAgent.credits_remaining >= 1 then
-    ApusAI.infer(metrics_prompt, {}, function(err, res)
-      if err then
-        print("Metrics extraction error: " .. err.message)
-        return
-      end
-
-      if ScholarUtils and ScholarUtils.parseMetricsFromResponse then
-        ArtAgent.metrics = ScholarUtils.parseMetricsFromResponse(res.data)
-      else
-        ArtAgent.metrics = { similarity_axes = {}, tags = {}, score_hint = 0 }
-      end
-
-      ArtAgent.credits_remaining = ArtAgent.credits_remaining - 1
-      ArtAgent.discovery_manager:useArtAgentCredit()
-
-      ArtAgent.fingerprint = (ScholarUtils and ScholarUtils.createFingerprint)
-        and ScholarUtils.createFingerprint(ArtAgent.analysis, ArtAgent.metrics, string.sub(ArtAgent.text, 1, 500))
-        or { hash = ArtAgent.text_hash, len = #ArtAgent.text }
-
-      -- Store to Arweave
-      ArweaveStorage.storeArtwork({
-        agent_id = ArtAgent.id,
-        title = ArtAgent.title,
-        icon = ArtAgent.icon,
-        text = ArtAgent.text,
-        text_hash = ArtAgent.text_hash,
-        analysis = ArtAgent.analysis,
-        metrics = ArtAgent.metrics,
-        fingerprint = ArtAgent.fingerprint
-      })
-
-      print("Metrics extracted, registering with coordinator...")
-      ArtAgent.registerWithCoordinator()
-      ArtAgent.startDiscovery()
-    end)
-  else
-    -- Fallback to external LLM
-    ArtAgent.useExternalLLM(metrics_prompt, "metrics", function(response)
-      ArtAgent.metrics = (ScholarUtils and ScholarUtils.parseMetricsFromResponse)
-        and ScholarUtils.parseMetricsFromResponse(response)
-        or { similarity_axes = {}, tags = {}, score_hint = 0 }
-
-      ArtAgent.fingerprint = (ScholarUtils and ScholarUtils.createFingerprint)
-        and ScholarUtils.createFingerprint(ArtAgent.analysis, ArtAgent.metrics, string.sub(ArtAgent.text, 1, 500))
-        or { hash = ArtAgent.text_hash, len = #ArtAgent.text }
-
-      ArweaveStorage.storeArtwork({
-        agent_id = ArtAgent.id,
-        title = ArtAgent.title,
-        icon = ArtAgent.icon,
-        text = ArtAgent.text,
-        text_hash = ArtAgent.text_hash,
-        analysis = ArtAgent.analysis,
-        metrics = ArtAgent.metrics,
-        fingerprint = ArtAgent.fingerprint
-      })
-
-      ArtAgent.registerWithCoordinator()
-      ArtAgent.startDiscovery()
-    end)
-  end
-end
-
--- ================== Coordinator registration (original) ==================
-function ArtAgent.registerWithCoordinator()
-  if ArtAgent.coordinator_process == "" then
-    print("No coordinator process set")
+  print("ArtAgent.text type:", type(ArtAgent.text))
+  
+  if type(PromptBuilder.buildSelfAnalysisPrompt) ~= "function" then
+    print("ERROR: PromptBuilder.buildSelfAnalysisPrompt is not a function, it's a " .. type(PromptBuilder.buildSelfAnalysisPrompt))
     return
   end
+  
+  local prompt = PromptBuilder.buildSelfAnalysisPrompt(ArtAgent.text or "")
+  print("Prompt type:", type(prompt))
+  print("Prompt length:", #prompt)
+  
+  local reference = "self-analysis-" .. os.time()
+  ArtAgent.sendInferRequest(prompt, reference)
+end
+
+-- Extract metrics from analysis
+function ArtAgent.extractMetrics()
+  print("Extracting metrics...")
+  local prompt = PromptBuilder.buildMetricExtractionPrompt(
+    ArtAgent.analysis or {},
+    ArtAgent.text or ""
+  )
+  local reference = "metrics-" .. os.time()
+  ArtAgent.sendInferRequest(prompt, reference)
+end
+
+-- Register with coordinator
+function ArtAgent.registerWithCoordinator()
+  print("Registering with coordinator...")
 
   Send({
-    Target = ArtAgent.coordinator_process,
+    Target = ArtAgent.coordinator_id,
     Action = "Register-Agent",
     Data = json.encode({
-      agent_id = ArtAgent.id,
-      title = ArtAgent.title,
-      icon = ArtAgent.icon,
-      text_hash = ArtAgent.text_hash,
-      analysis = ArtAgent.analysis,
-      metrics = ArtAgent.metrics,
-      fingerprint = ArtAgent.fingerprint
+      agent_id   = ArtAgent.agent_id,
+      title      = ArtAgent.title,
+      icon       = ArtAgent.icon,
+      text_hash  = ArtAgent.text_hash,
+      analysis   = ArtAgent.analysis or {},
+      metrics    = ArtAgent.metrics or {},
+      fingerprint= ArtAgent.fingerprint or {},
+      text       = ArtAgent.text or "" -- Include full text for comparisons
     })
   })
 end
 
--- ================== Discovery (original) ==================
+-- Start discovery
 function ArtAgent.startDiscovery()
-  print("Starting peer discovery...")
-
+  print("Starting discovery...")
   Send({
-    Target = ArtAgent.coordinator_process,
+    Target = ArtAgent.coordinator_id,
     Action = "Get-Random-Agents",
     Data = json.encode({
-      requester = ArtAgent.id,
-      count = MetricsConfig.DISCOVERY.initial_random_agents
+      requester = ArtAgent.agent_id,
+      count = (MetricsConfig and MetricsConfig.DISCOVERY and MetricsConfig.DISCOVERY.initial_random_agents) or 5
     })
   })
 end
 
--- ================== External LLM (original) ==================
-function ArtAgent.useExternalLLM(prompt, purpose, callback)
-  local reference = "ext-" .. purpose .. "-" .. os.time()
+-- Compare with another agent
+function ArtAgent.compareWithAgent(other_agent)
+  -- Check duplicate first
+  if RelationshipAnalyzer.checkDuplicate(ArtAgent.text_hash, other_agent.text_hash) then
+    local relationship = {
+      agent1 = ArtAgent.agent_id,
+      agent2 = other_agent.agent_id,
+      type = "duplicate",
+      score = 100,
+      justification = "Exact text match",
+      similarity = "Identical text",
+      contrasts = "None",
+      peer_id = other_agent.agent_id
+    }
 
-  Send({
-    Target = ArtAgent.llm_apus_process,
-    Action = "Infer",
-    ["X-Prompt"] = prompt,
-    ["X-Reference"] = reference
-  })
-
-  ArtAgent["callback_" .. reference] = callback
-  ArtAgent.discovery_manager:useLLMApus()
-end
-
--- ================== Compare with peers (original) ==================
-function ArtAgent.compareWithPeers(peer_agents)
-  if ArtAgent.discovery_manager:shouldStop() then
-    print("Discovery complete")
-    ArtAgent.finalizeDiscovery()
+    ArtAgent.registerRelationship(relationship)
     return
   end
 
-  for _, peer in ipairs(peer_agents) do
-    if ArtAgent.discovery_manager:shouldStop() then break end
+  -- Build comparison prompt
+  local prompt = PromptBuilder.buildComparisonPrompt(
+    {
+      agent_id    = ArtAgent.agent_id,
+      title       = ArtAgent.title,
+      analysis    = ArtAgent.analysis,
+      metrics     = ArtAgent.metrics,
+      fingerprint = ArtAgent.fingerprint,
+      text        = ArtAgent.text
+    },
+    other_agent
+  )
 
-    if not ArtAgent.discovery_manager:isExamined(peer.agent_id) then
-      ArtAgent.discovery_manager:markExamined(peer.agent_id)
+  local reference = "compare-" .. tostring(other_agent.agent_id) .. "-" .. os.time()
 
-      local comparison_prompt = PromptBuilder.buildComparisonPrompt(
-        {
-          agent_id = ArtAgent.id,
-          title = ArtAgent.title,
-          analysis = ArtAgent.analysis,
-          metrics = ArtAgent.metrics,
-          fingerprint = ArtAgent.fingerprint,
-          text = ArtAgent.text
-        },
-        peer
-      )
-
-      if ArtAgent.discovery_manager:shouldUseLLMApus() or ArtAgent.credits_remaining < 1 then
-        ArtAgent.useExternalLLM(comparison_prompt, "compare-" .. peer.agent_id, function(response)
-          local result = RelationshipAnalyzer.parseRelationship(response)
-          ArtAgent.processComparisonResult(result, peer.agent_id)
-        end)
-      else
-        ApusAI.infer(comparison_prompt, {}, function(err, res)
-          if err then
-            print("Comparison error: " .. err.message)
-            return
-          end
-
-          ArtAgent.credits_remaining = ArtAgent.credits_remaining - 1
-          ArtAgent.discovery_manager:useArtAgentCredit()
-
-          local result = RelationshipAnalyzer.parseRelationship(res.data)
-          ArtAgent.processComparisonResult(result, peer.agent_id)
-        end)
-      end
-    end
-  end
+  ArtAgent.sendInferRequest(prompt, reference, {
+    ["X-Other-Agent"] = tostring(other_agent.agent_id)
+  })
 end
 
--- ================== Process comparison result (original) ==================
-function ArtAgent.processComparisonResult(result, peer_id)
-  if result.type ~= "none" then
-    local relationship = {
-      agent1 = ArtAgent.id,
-      agent2 = peer_id,
-      type = result.type,
-      score = result.score,
-      justification = result.justification,
-      similarity = result.similarity or "",
-      contrasts = result.contrasts or ""
-    }
-
-    table.insert(ArtAgent.relationships, relationship)
-    ArtAgent.discovery_manager:addRelationship(relationship)
-
-    ArweaveStorage.storeRelationship(relationship)
-
-    Send({
-      Target = ArtAgent.coordinator_process,
-      Action = "Register-Relationship",
-      Data = json.encode(relationship)
-    })
-
-    if result.type == "sibling" or result.type == "cousin" then
-      Send({
-        Target = peer_id,
-        Action = "Share-Network",
-        Data = json.encode({ requester = ArtAgent.id })
-      })
+-- Register relationship
+function ArtAgent.registerRelationship(relationship)
+  if relationship.type == "none" then
+    print("No relationship with " .. tostring(relationship.agent2))
+    if ArtAgent.discovery and ArtAgent.discovery.markExamined then
+      ArtAgent.discovery:markExamined(relationship.agent2)
     end
+
+    if ArtAgent.discovery and ArtAgent.discovery.shouldStop and not ArtAgent.discovery:shouldStop() then
+      ArtAgent.continueDiscovery()
+    else
+      ArtAgent.completeDiscovery()
+    end
+    return
   end
 
-  if not ArtAgent.discovery_manager:shouldStop() then
-    local next_candidates = ArtAgent.discovery_manager:getNextCandidates(ArtAgent.relationships)
-    if #next_candidates > 0 then
-      Send({
-        Target = ArtAgent.coordinator_process,
-        Action = "Get-Agent-Info",
-        Data = json.encode({
-          requester = ArtAgent.id,
-          agent_ids = next_candidates
-        })
-      })
-    end
+  print("Found " .. tostring(relationship.type) .. " with " .. tostring(relationship.agent2))
+
+  -- Add to discovery
+  if ArtAgent.discovery and ArtAgent.discovery.addRelationship then
+    ArtAgent.discovery:addRelationship(relationship)
+  end
+  if ArtAgent.discovery and ArtAgent.discovery.markExamined then
+    ArtAgent.discovery:markExamined(relationship.agent2)
+  end
+
+  -- Register with coordinator
+  Send({
+    Target = ArtAgent.coordinator_id,
+    Action = "Register-Relationship",
+    Data = json.encode(relationship)
+  })
+
+  -- Check if should continue
+  if ArtAgent.discovery and ArtAgent.discovery.shouldStop and ArtAgent.discovery:shouldStop() then
+    ArtAgent.completeDiscovery()
   else
-    ArtAgent.finalizeDiscovery()
+    ArtAgent.continueDiscovery()
   end
 end
 
--- ================== Finalize discovery (original) ==================
-function ArtAgent.finalizeDiscovery()
-  local summary = ArtAgent.discovery_manager:getSummary()
+-- Continue discovery
+function ArtAgent.continueDiscovery()
+  local candidates = {}
+  if ArtAgent.discovery and ArtAgent.discovery.getNextCandidates then
+    candidates = ArtAgent.discovery:getNextCandidates() or {}
+  end
+
+  if #candidates > 0 then
+    Send({
+      Target = ArtAgent.coordinator_id,
+      Action = "Get-Agent-Info",
+      Data = json.encode({ agent_ids = candidates })
+    })
+  else
+    -- Get more random agents
+    Send({
+      Target = ArtAgent.coordinator_id,
+      Action = "Get-Random-Agents",
+      Data = json.encode({
+        requester = ArtAgent.agent_id,
+        count = 5
+      })
+    })
+  end
+end
+
+-- Complete discovery
+function ArtAgent.completeDiscovery()
+  local summary = (ArtAgent.discovery and ArtAgent.discovery.getSummary and ArtAgent.discovery:getSummary()) or { total_relationships = 0 }
 
   print("Discovery complete!")
-  print("Examined: " .. (summary.total_examined or 0) .. " agents")
-  print("Relationships found: " .. (summary.total_relationships or #ArtAgent.relationships))
-  print("Credits used: " .. (summary.art_agent_credits or 0))
-  print("External LLM calls: " .. (summary.llm_apus_calls or 0))
-
-  ArweaveStorage.storeDiscoveryReport(ArtAgent.id, summary)
+  print("Total relationships: " .. tostring(summary.total_relationships))
 
   Send({
-    Target = ArtAgent.coordinator_process,
+    Target = ArtAgent.coordinator_id,
     Action = "Discovery-Complete",
     Data = json.encode({
-      agent_id = ArtAgent.id,
+      agent_id = ArtAgent.agent_id,
       summary = summary
     })
   })
+
+  if ArtAgent.discovery then
+    ArtAgent.discovery.discovery_complete = true
+  end
 end
 
--- ================== Handlers (original set) ==================
+-- HANDLERS
+
+-- Initialize with text
 Handlers.add(
-  "Set-Text",
-  Handlers.utils.hasMatchingTag("Action", "Set-Text"),
+  "Initialize",
+  Handlers.utils.hasMatchingTag("Action", "Initialize"),
   function(msg)
-    ArtAgent.text = msg.Data
-    ArtAgent.title = msg.Tags["Title"] or "Untitled"
-    ArtAgent.icon = msg.Tags["Icon"] or "📝"
-    ArtAgent.coordinator_process = msg.Tags["Coordinator"] or ""
-
-    print("Text set: " .. ArtAgent.title)
-
-    --if ArtAgent.apus_installed then
-      ArtAgent.initialize()
-    -- else
-    --   print("Waiting for APUS AI to install...")
-    --   Send({ Target = ao.id, Action = "Check-APUS" })
-    -- end
+    print("Initialize handler called")
+    print("msg.Data type:", type(msg.Data))
+    print("msg.Data:", tostring(msg.Data))
+    
+    local data = {}
+    if msg.Data and #tostring(msg.Data) > 0 then
+      local ok, parsed = pcall(json.decode, msg.Data)
+      if ok and type(parsed) == "table" then 
+        data = parsed
+        print("Parsed data.text type:", type(data.text))
+        print("Parsed data.title type:", type(data.title))
+        print("Parsed data.icon type:", type(data.icon))
+      else
+        print("JSON decode failed:", tostring(parsed))
+      end
+    end
+    
+    print("Calling ArtAgent.initialize...")
+    if type(ArtAgent.initialize) ~= "function" then
+      print("ERROR: ArtAgent.initialize is not a function, it's a " .. type(ArtAgent.initialize))
+      return
+    end
+    
+    ArtAgent.initialize(data.text, data.title, data.icon)
   end
 )
 
+-- Handle inference response from LLM APUS
+Handlers.add(
+  "OnInferResponse",
+  Handlers.utils.hasMatchingTag("Action", "Infer-Response"),
+  function(msg)
+    if msg.Code then
+      print("Inference error: " .. tostring(msg.Code) .. " - " .. tostring(msg.Data or ""))
+      return
+    end
+
+    local reference = msg["X-Reference"] or ""
+    local response_text = msg.Data
+    if type(response_text) ~= "string" then
+      response_text = json.encode(response_text or {})
+    end
+
+    print("Received inference response for: " .. reference)
+
+    if _string.find(reference, "self%-analysis") then
+      if type(ScholarUtils.parseAnalysis) ~= "function" then
+        print("[BUG] ScholarUtils.parseAnalysis invalid, type=" .. type(ScholarUtils.parseAnalysis))
+        return
+      end
+      ArtAgent.analysis = ScholarUtils.parseAnalysis(response_text) or {}
+      print("Analysis complete")
+      ArtAgent.extractMetrics()
+
+    elseif _string.find(reference, "metrics") then
+      if type(ScholarUtils.parseMetricsFromResponse) ~= "function" then
+        print("[BUG] parseMetricsFromResponse invalid, type=" .. type(ScholarUtils.parseMetricsFromResponse))
+        return
+      end
+      ArtAgent.metrics = ScholarUtils.parseMetricsFromResponse(response_text) or {}
+      print("Metrics extracted")
+
+      local text_excerpt = _string.sub(ArtAgent.text or "", 1, 500)
+      if type(ScholarUtils.createFingerprint) ~= "function" then
+        print("[BUG] createFingerprint invalid, type=" .. type(ScholarUtils.createFingerprint))
+        return
+      end
+      ArtAgent.fingerprint = ScholarUtils.createFingerprint(
+        ArtAgent.analysis or {},
+        ArtAgent.metrics or {},
+        text_excerpt
+      ) or {}
+
+      ArtAgent.registerWithCoordinator()
+
+    elseif _string.find(reference, "compare") then
+      if type(RelationshipAnalyzer.parseRelationship) ~= "function" then
+        print("[BUG] parseRelationship invalid, type=" .. type(RelationshipAnalyzer.parseRelationship))
+        return
+      end
+      local relationship = RelationshipAnalyzer.parseRelationship(response_text) or { type = "none" }
+      local other_agent_id = msg["X-Other-Agent"]
+
+      if other_agent_id then
+        relationship.agent1 = ArtAgent.agent_id
+        relationship.agent2 = other_agent_id
+        relationship.peer_id = other_agent_id
+        ArtAgent.registerRelationship(relationship)
+      else
+        print("Warning: No other agent ID in comparison response")
+      end
+    else
+      print("Warning: Unknown reference pattern: " .. reference)
+    end
+  end
+)
+
+-- Registration result from coordinator
+Handlers.add(
+  "Registration-Result",
+  Handlers.utils.hasMatchingTag("Action", "Registration-Result"),
+  function(msg)
+    local result = {}
+    if msg.Data then
+      local ok, parsed = pcall(json.decode, msg.Data)
+      if ok and type(parsed) == "table" then result = parsed end
+    end
+
+    if result.status == "duplicate" then
+      print("Duplicate detected, original: " .. tostring(result.original_agent))
+      ArtAgent.completeDiscovery()
+    else
+      print("Registered successfully")
+      ArtAgent.startDiscovery()
+    end
+  end
+)
+
+-- Random agents from coordinator
 Handlers.add(
   "Random-Agents",
   Handlers.utils.hasMatchingTag("Action", "Random-Agents"),
   function(msg)
-    local agents = json.decode(msg.Data)
-    ArtAgent.compareWithPeers(agents)
+    local agents = {}
+    if msg.Data then
+      local ok, parsed = pcall(json.decode, msg.Data)
+      if ok and type(parsed) == "table" then agents = parsed end
+    end
+
+    print("Received " .. tostring(#agents) .. " agents to examine")
+
+    for _, agent in ipairs(agents) do
+      if ArtAgent.discovery and ArtAgent.discovery.isExamined and
+         not ArtAgent.discovery:isExamined(agent.agent_id) and
+         ArtAgent.discovery.shouldStop and not ArtAgent.discovery:shouldStop() then
+        ArtAgent.compareWithAgent(agent)
+      end
+    end
   end
 )
 
+-- Agent info from coordinator
 Handlers.add(
   "Agent-Info",
   Handlers.utils.hasMatchingTag("Action", "Agent-Info"),
   function(msg)
-    local agents = json.decode(msg.Data)
-    ArtAgent.compareWithPeers(agents)
-  end
-)
-
-Handlers.add(
-  "Infer-Response",
-  Handlers.utils.hasMatchingTag("Action", "Infer-Response"),
-  function(msg)
-    local reference = msg["X-Reference"]
-    local callback = ArtAgent["callback_" .. reference]
-
-    if callback then
-      local data = msg.Data
-      if msg.Code then
-        print("LLM error: " .. msg.Code .. " - " .. data)
-        return
-      end
-
-      local success, parsed = pcall(json.decode, data)
-      if success and parsed and parsed.result then
-        callback(parsed.result)
-      else
-        callback(data)
-      end
-
-      ArtAgent["callback_" .. reference] = nil
-    end
-  end
-)
-
-Handlers.add(
-  "Share-Network",
-  Handlers.utils.hasMatchingTag("Action", "Share-Network"),
-  function(msg)
-    local request = json.decode(msg.Data)
-
-    local top_relationships = {}
-    for i = 1, math.min(MetricsConfig.DISCOVERY.network_share_limit, #ArtAgent.relationships) do
-      table.insert(top_relationships, {
-        peer_id = ArtAgent.relationships[i].agent2
-      })
+    local agents = {}
+    if msg.Data then
+      local ok, parsed = pcall(json.decode, msg.Data)
+      if ok and type(parsed) == "table" then agents = parsed end
     end
 
-    Send({
-      Target = request.requester,
-      Action = "Network-Shared",
-      Data = json.encode(top_relationships)
-    })
-  end
-)
-
-Handlers.add(
-  "Network-Shared",
-  Handlers.utils.hasMatchingTag("Action", "Network-Shared"),
-  function(msg)
-    local shared_relationships = json.decode(msg.Data)
-
-    local new_peers = {}
-    for _, rel in ipairs(shared_relationships) do
-      if not ArtAgent.discovery_manager:isExamined(rel.peer_id) then
-        table.insert(new_peers, rel.peer_id)
+    for _, agent in ipairs(agents) do
+      if ArtAgent.discovery and ArtAgent.discovery.isExamined and
+         not ArtAgent.discovery:isExamined(agent.agent_id) and
+         ArtAgent.discovery.shouldStop and not ArtAgent.discovery:shouldStop() then
+        ArtAgent.compareWithAgent(agent)
       end
     end
-
-    if #new_peers > 0 then
-      Send({
-        Target = ArtAgent.coordinator_process,
-        Action = "Get-Agent-Info",
-        Data = json.encode({
-          requester = ArtAgent.id,
-          agent_ids = new_peers
-        })
-      })
-    end
   end
 )
 
+-- Get status
 Handlers.add(
   "Get-Status",
   Handlers.utils.hasMatchingTag("Action", "Get-Status"),
@@ -638,17 +491,17 @@ Handlers.add(
       Action = "Status",
       Data = json.encode({
         initialized = ArtAgent.initialized,
-        apus_installed = ArtAgent.apus_installed,
-        apm_loaded = ArtAgent.apm_loaded,
-        modules_loaded = ArtAgent.modules_loaded,
-        credits_remaining = ArtAgent.credits_remaining,
-        relationships_found = #ArtAgent.relationships,
-        discovery_status = ArtAgent.discovery_manager and
-          ArtAgent.discovery_manager:getSummary() or "not started"
+        title = ArtAgent.title,
+        analysis = ArtAgent.analysis,
+        metrics = ArtAgent.metrics,
+        discovery_status = ArtAgent.discovery and ArtAgent.discovery.getSummary and
+          ArtAgent.discovery:getSummary() or "not started"
       })
     })
   end
 )
 
-print("Art Agent Process ID: " .. ao.id)
+print("Art Agent Process: " .. ao.id)
+print("Ready for initialization. Send Initialize action with {text, title, icon}")
+
 return ArtAgent

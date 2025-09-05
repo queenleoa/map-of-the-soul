@@ -3,11 +3,13 @@ local json = require("json")
 local crypto = require(".crypto")
 local MetricsConfig = require("config.metrics_config")
 
+
 local ScholarUtils = {}
 
 -- Generate hash for text
 function ScholarUtils.hashText(text)
-    return crypto.digest.sha2_256(text).asHex()
+    local str = text
+    return crypto.digest.sha3_256(str).asHex()
 end
 
 -- Parse self-analysis from LLM response
@@ -16,8 +18,7 @@ function ScholarUtils.parseAnalysis(response)
     -- {"Emotional Thematic": "", "Stylistic Linguistic Canonical": "", "Uniqueness": ""}
     
     local analysis = {
-        emotional_tone = "",
-        thematic_elements = "",
+        emotional_thematic = "",
         stylistic_features = "",
         hidden_insight = ""
     }
@@ -28,9 +29,7 @@ function ScholarUtils.parseAnalysis(response)
         local success, result = pcall(json.decode, json_str)
         if success then
             -- Map from prompt's JSON keys to internal field names
-            local emotional_thematic = result["Emotional Thematic"] or ""
-            analysis.emotional_tone = emotional_thematic
-            analysis.thematic_elements = emotional_thematic  -- Both from same source
+            analysis.emotional_thematic = result["Emotional Thematic"] or ""
             analysis.stylistic_features = result["Stylistic Linguistic Canonical"] or ""
             analysis.hidden_insight = result["Uniqueness"] or ""
             return analysis
@@ -38,10 +37,8 @@ function ScholarUtils.parseAnalysis(response)
     end
     
     -- Fallback: parse from text if JSON fails
-    local emotional = response:match("Emotional Tone and Thematic Elements[^:]*:%s*([^\n]+)") or
+    analysis.emotional_thematic = response:match("Emotional Tone and Thematic Elements[^:]*:%s*([^\n]+)") or
                      response:match("Emotional Thematic[^:]*:%s*([^\n]+)") or ""
-    analysis.emotional_tone = emotional
-    analysis.thematic_elements = emotional
     
     analysis.stylistic_features = response:match("Stylistic Linguistic Canonical[^:]*:%s*([^\n]+)") or
                                   response:match("Stylistic.-Features[^:]*:%s*([^\n]+)") or ""
@@ -246,8 +243,7 @@ end
 -- Create fingerprint for comparison
 function ScholarUtils.createFingerprint(analysis, metrics, text_excerpt)
     return {
-        emotional_tone = analysis.emotional_tone or "",
-        thematic_elements = analysis.thematic_elements or "",
+        emotional_thematic = analysis.emotional_thematic or "",
         stylistic_features = analysis.stylistic_features or "",
         hidden_insight = analysis.hidden_insight or "",
         themes = metrics.themes or {},
